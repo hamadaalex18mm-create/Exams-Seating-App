@@ -251,6 +251,9 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 header_font = Font(color="FFFFFF", bold=True, size=11)
                 empty_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
                 
+                # إضافة اللون الجديد المتبادل (رصاصي مائل للأزرق الفاتح جداً)
+                alt_row_fill = PatternFill(start_color="F0F4F8", end_color="F0F4F8", fill_type="solid")
+                
                 meta_data = [
                     ("أماكن امتحانات", exam_period),
                     ("العام الجامعي", academic_year),
@@ -277,12 +280,17 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 
                 for r_idx in range(6, worksheet.max_row + 1):
                     is_empty = (worksheet.cell(row=r_idx, column=4).value == '-') 
+                    # تلوين سطر وسطر (السطور الزوجية هتاخد اللون التبادلي الفاتح)
+                    is_alt_row = (r_idx % 2 == 0)
+                    
                     for c_idx in range(1, total_columns + 1):
                         cell = worksheet.cell(row=r_idx, column=c_idx)
                         cell.border = thin_border
                         cell.alignment = center_align
                         if is_empty:
                             cell.fill = empty_fill
+                        elif is_alt_row:
+                            cell.fill = alt_row_fill
                             
                 worksheet.column_dimensions['A'].width = 10 
                 worksheet.column_dimensions['B'].width = 30 
@@ -304,7 +312,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
             
             st.markdown("<div style='display: flex; justify-content: flex-end; width: 100%; margin-top: 15px;'>", unsafe_allow_html=True)
             
-            # === التسمية الديناميكية المحدثة بإضافة كلمة "المستوي" ===
             safe_exam = exam_period.replace(" ", "_")
             safe_year = academic_year.replace(" ", "")
             if level_courses.strip():
