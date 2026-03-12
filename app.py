@@ -132,7 +132,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
     st.info(f"إجمالي عدد الطلبة (بدون تكرار) المطلوب توزيعهم: **{total_unique_students}** طالب.")
     
     if st.button("🚀 بدء التوزيع الذكي الموحد", type="primary"):
-        with st.spinner("جاري التوزيع (حسب سعة كل مقرر) وسد الفجوات..."):
+        with st.spinner("جاري التوزيع وبناء جدول الإكسيل الاحترافي..."):
             result_data = []
             curr_student_idx = 0
             
@@ -237,6 +237,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
             styled_df = df_display.style.set_properties(**{'text-align': 'right'}).set_table_styles([dict(selector='th', props=[('text-align', 'right')])])
             st.dataframe(styled_df, hide_index=True, use_container_width=True)
             
+            # --- ملف الإكسيل كـ "جدول إكسيل رسمي - Table" ---
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 final_df.to_excel(writer, index=False, sheet_name='خريطة اللجان', startrow=4)
@@ -245,14 +246,12 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 worksheet.sheet_view.rightToLeft = True 
                 
                 from openpyxl.styles import Alignment, Border, Side, Font, PatternFill
+                from openpyxl.worksheet.table import Table, TableStyleInfo
+                from openpyxl.utils import get_column_letter
+                
                 thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
                 center_align = Alignment(horizontal='center', vertical='center')
-                header_fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
-                header_font = Font(color="FFFFFF", bold=True, size=11)
                 empty_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
-                
-                # إضافة اللون الجديد المتبادل (رصاصي مائل للأزرق الفاتح جداً)
-                alt_row_fill = PatternFill(start_color="F0F4F8", end_color="F0F4F8", fill_type="solid")
                 
                 meta_data = [
                     ("أماكن امتحانات", exam_period),
@@ -270,40 +269,42 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     worksheet[f'B{i}'].font = Font(bold=True)
 
                 total_columns = len(final_df.columns)
+                last_row = worksheet.max_row
                 
-                for col_num in range(1, total_columns + 1):
-                    cell = worksheet.cell(row=5, column=col_num)
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.alignment = center_align
-                    cell.border = thin_border
+                # تحويل البيانات لجدول إكسيل رسمي (يضيف الفلتر وسطر وسطر أوتوماتيك)
+                table_ref = f"A5:{get_column_letter(total_columns)}{last_row}"
+                tab = Table(displayName="MapTable", ref=table_ref)
                 
-                for r_idx in range(6, worksheet.max_row + 1):
-                    is_empty = (worksheet.cell(row=r_idx, column=4).value == '-') 
-                    # تلوين سطر وسطر (السطور الزوجية هتاخد اللون التبادلي الفاتح)
-                    is_alt_row = (r_idx % 2 == 0)
-                    
+                # ستايل الجدول الأزرق القياسي (TableStyleMedium2)
+                style = TableStyleInfo(name="TableStyleMedium2", showFirstColumn=False,
+                                       showLastColumn=False, showRowStripes=True, showColumnStripes=False)
+                tab.tableStyleInfo = style
+                worksheet.add_table(tab)
+                
+                # توسيط الخلايا وإضافة حدود خفيفة، وتلوين اللجان الفاضية (الرصاصي بيغطي على ستايل الجدول)
+                for r_idx in range(5, last_row + 1):
+                    is_empty = False
+                    if r_idx > 5:
+                        is_empty = (worksheet.cell(row=r_idx, column=4).value == '-') 
+                        
                     for c_idx in range(1, total_columns + 1):
                         cell = worksheet.cell(row=r_idx, column=c_idx)
                         cell.border = thin_border
                         cell.alignment = center_align
                         if is_empty:
                             cell.fill = empty_fill
-                        elif is_alt_row:
-                            cell.fill = alt_row_fill
                             
-                worksheet.column_dimensions['A'].width = 10 
-                worksheet.column_dimensions['B'].width = 30 
+                worksheet.column_dimensions['A'].width = 12 
+                worksheet.column_dimensions['B'].width = 35 
                 worksheet.column_dimensions['C'].width = 12 
                 worksheet.column_dimensions['D'].width = 15 
                 worksheet.column_dimensions['E'].width = 15 
                 
-                from openpyxl.utils import get_column_letter
                 for i in range(6, total_columns + 1):
                     col_letter = get_column_letter(i)
-                    worksheet.column_dimensions[col_letter].width = 15
+                    worksheet.column_dimensions[col_letter].width = 16
                 
-                worksheet.print_area = f"A1:{get_column_letter(total_columns)}{worksheet.max_row}"
+                worksheet.print_area = f"A1:{get_column_letter(total_columns)}{last_row}"
                 worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
                 worksheet.sheet_properties.pageSetUpPr.fitToPage = True
                 worksheet.page_setup.fitToWidth = 1
