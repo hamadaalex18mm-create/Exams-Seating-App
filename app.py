@@ -253,6 +253,9 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 center_align = Alignment(horizontal='center', vertical='center')
                 empty_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
                 
+                # خط أبيض عريض مخصص لرؤوس الأعمدة
+                header_font_white = Font(color="FFFFFF", bold=True, size=12)
+                
                 meta_data = [
                     ("أماكن امتحانات", exam_period),
                     ("العام الجامعي", academic_year),
@@ -271,17 +274,15 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 total_columns = len(final_df.columns)
                 last_row = worksheet.max_row
                 
-                # تحويل البيانات لجدول إكسيل رسمي (يضيف الفلتر وسطر وسطر أوتوماتيك)
                 table_ref = f"A5:{get_column_letter(total_columns)}{last_row}"
                 tab = Table(displayName="MapTable", ref=table_ref)
                 
-                # ستايل الجدول الأزرق القياسي (TableStyleMedium2)
                 style = TableStyleInfo(name="TableStyleMedium2", showFirstColumn=False,
                                        showLastColumn=False, showRowStripes=True, showColumnStripes=False)
                 tab.tableStyleInfo = style
                 worksheet.add_table(tab)
                 
-                # توسيط الخلايا وإضافة حدود خفيفة، وتلوين اللجان الفاضية (الرصاصي بيغطي على ستايل الجدول)
+                # تنسيق الخلايا
                 for r_idx in range(5, last_row + 1):
                     is_empty = False
                     if r_idx > 5:
@@ -291,7 +292,11 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         cell = worksheet.cell(row=r_idx, column=c_idx)
                         cell.border = thin_border
                         cell.alignment = center_align
-                        if is_empty:
+                        
+                        # إجبار رؤوس الأعمدة على اللون الأبيض
+                        if r_idx == 5:
+                            cell.font = header_font_white
+                        elif is_empty:
                             cell.fill = empty_fill
                             
                 worksheet.column_dimensions['A'].width = 12 
