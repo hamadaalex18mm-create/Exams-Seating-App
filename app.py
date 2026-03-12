@@ -277,11 +277,12 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 
                 thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
                 center_align = Alignment(horizontal='center', vertical='center')
-                right_align = Alignment(horizontal='right', vertical='center') # محاذاة لليمين لمكان اللجنة
+                right_align = Alignment(horizontal='right', vertical='center') # محاذاة لليمين 
                 
                 empty_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
                 header_font_white = Font(color="FFFFFF", bold=True, size=12)
-                data_font = Font(size=12) # فونت 12 للبيانات
+                data_font = Font(size=12) # فونت 12 لبيانات الجدول
+                meta_font = Font(bold=True, size=12) # فونت 12 عريض لرأس الصفحة
                 
                 meta_data = [
                     ("أماكن امتحانات", exam_period),
@@ -298,29 +299,37 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     worksheet = writer.sheets[sheet_name]
                     worksheet.sheet_view.rightToLeft = True 
                     
+                    # 1. تنسيق البيانات الأساسية أعلى الجدول (صفوف 1 لـ 3)
                     for i, (label, val) in enumerate(meta_data, start=1):
+                        worksheet.row_dimensions[i].height = 26.25 # ارتفاع الصف 35 بكسل
                         worksheet[f'A{i}'] = label
                         worksheet[f'B{i}'] = val
                         worksheet[f'A{i}'].border = thin_border
                         worksheet[f'B{i}'].border = thin_border
+                        
                         worksheet[f'A{i}'].alignment = center_align
-                        worksheet[f'B{i}'].alignment = center_align
-                        worksheet[f'A{i}'].font = Font(bold=True)
-                        worksheet[f'B{i}'].font = Font(bold=True)
+                        # محاذاة العام الجامعي لليمين عشان الأرقام والشرطة تظبط
+                        if label == "العام الجامعي":
+                            worksheet[f'B{i}'].alignment = right_align
+                        else:
+                            worksheet[f'B{i}'].alignment = center_align
+                            
+                        worksheet[f'A{i}'].font = meta_font
+                        worksheet[f'B{i}'].font = meta_font
                     
                     total_columns = len(current_df.columns)
                     last_row = worksheet.max_row
                     
+                    # 2. إنشاء جدول الإكسيل
                     table_ref = f"A5:{get_column_letter(total_columns)}{last_row}"
                     tab = Table(displayName=f"TableMap_{idx}", ref=table_ref)
                     style = TableStyleInfo(name="TableStyleMedium2", showFirstColumn=False, showLastColumn=False, showRowStripes=True, showColumnStripes=False)
                     tab.tableStyleInfo = style
                     worksheet.add_table(tab)
                     
-                    # تنسيق الخلايا (اللون، الفونت، المحاذاة، وارتفاع الصف)
+                    # 3. تنسيق خلايا الجدول
                     for r_idx in range(5, last_row + 1):
-                        # ارتفاع الصف 35 بكسل = 26.25 نقطة في الإكسيل
-                        worksheet.row_dimensions[r_idx].height = 26.25 
+                        worksheet.row_dimensions[r_idx].height = 26.25 # ارتفاع الصف 35 بكسل للجدول كمان
                         
                         is_empty = False
                         if r_idx > 5:
@@ -337,7 +346,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                                 cell.font = header_font_white
                                 cell.alignment = center_align
                             else:
-                                cell.font = data_font # تطبيق فونت 12
+                                cell.font = data_font 
                                 
                                 # محاذاة لليمين للعمود التاني (مكان اللجنة)
                                 if c_idx == 2:
@@ -348,6 +357,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                                 if is_empty:
                                     cell.fill = empty_fill
                                 
+                    # 4. تظبيط عرض الأعمدة
                     if sheet_name == 'خريطة اللجان':
                         worksheet.column_dimensions['A'].width = 12 
                         worksheet.column_dimensions['B'].width = 45 
@@ -363,6 +373,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         for i in range(6, total_columns + 1):
                             worksheet.column_dimensions[get_column_letter(i)].width = 16
                             
+                    # 5. إعدادات الطباعة
                     worksheet.print_area = f"A1:{get_column_letter(total_columns)}{last_row}"
                     worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
                     
