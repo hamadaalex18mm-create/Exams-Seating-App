@@ -110,10 +110,13 @@ if st.session_state.rooms_df is None or st.session_state.students_df is None:
 if st.session_state.rooms_df is not None and st.session_state.students_df is not None:
     st.markdown("<h3>الخطوة 2: توليد خريطة اللجان الموحدة</h3>", unsafe_allow_html=True)
     
-    # استخراج أرقام الجلوس الفريدة وترتيبها
+    # استخراج أرقام الجلوس الفريدة والمقررات لكل طالب
     df_students = st.session_state.students_df
     unique_seats = sorted(df_students['رقم الجلوس'].unique())
     total_unique_students = len(unique_seats)
+    
+    # تجميع المقررات لكل طالب (بدون تكرار لنفس المادة للطالب الواحد)
+    seat_courses = df_students.groupby('رقم الجلوس')['اسم المقرر'].apply(lambda x: list(set(x))).to_dict()
     
     st.info(f"إجمالي عدد الطلبة (بدون تكرار) المطلوب توزيعهم: **{total_unique_students}** طالب.")
     
@@ -122,8 +125,10 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
             result_data = []
             curr_student_idx = 0
             
-            # البداية من أول طالب فعلي
-            current_range_start = unique_seats[0] if total_unique_students > 0 else 0
+            # البداية من أول طالب فعلي (نحاول نظبط أول رقم على 0 أو 5 لو أمكن)
+            first_seat = unique_seats[0] if total_unique_students > 0 else 0
+            current_range_start = math.floor(first_seat / 5.0) * 5 if first_seat > 0 else 0
+            
             rooms_list = st.session_state.rooms_df.to_dict('records')
             
             for room in rooms_list:
@@ -143,43 +148,66 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     })
                     continue
                 
-                # حساب عدد الطلبة المتبقين وأقصى عدد نقدر ناخده في اللجنة دي
-                remaining = total_unique_students - curr_student_idx
-                k = min(room_cap, remaining)
-                
-                # إيجاد النهاية المثالية (بدون فجوات وبأرقام شيك)
-                final_end = None
-                best_k = k
-                
-                for rollback in range(min(10, k)): # نجرب نرجع لورا لحد 9 طلبة عشان التقفيل
-                    test_k = k - rollback
-                    last_actual = unique_seats[curr_student_idx + test_k - 1]
+                # حساب أقصى عدد من الطلبة يمكن إضافته بدون كسر السعة الإجمالية أو سعة أي مقرر
+                course_counts = {}
+                max_c = 0
+                for i in range(curr_student_idx, total_unique_students):
+                    seat = unique_seats[i]
+                    courses_for_seat = seat_courses.get(seat, [])
                     
-                    if curr_student_idx + test_k == total_unique_students:
-                        # دي آخر لجنة فيها طلبة! نقفلها على أقرب 0 أو 5
-                        final_end = math.ceil(last_actual / 5.0) * 5
-                        best_k = test_k
-                        break
-                    else:
-                        # في طلبة تانيين، لازم نقفل الفجوة مع الطالب اللي جاي
-                        next_actual = unique_seats[curr_student_idx + test_k]
+                    if (i - curr_student_idx + 1) > room_cap:
+                        break # تخطينا السعة الإجمالية للجنة
                         
-                        # نختار أكبر رقم آخره 0 أو 5 يكون قبل الطالب اللي جاي مباشرة
-                        X = math.floor((next_actual - 1) / 5.0) * 5
-                        
-                        if X >= last_actual: # لو الرقم ده مغطي كل طلبة اللجنة، يبقى ممتاز!
-                            final_end = X
-                            best_k = test_k
+                    can_add = True
+                    for c in courses_for_seat:
+                        if course_counts.get(c, 0) + 1 > room_cap:
+                            can_add = False
                             break
+                    
+                    if not can_add:
+                        break # تخطينا سعة أحد المقررات
+                        
+                    for c in courses_for_seat:
+                        course_counts[c] = course_counts.get(c, 0) + 1
+                    max_c += 1
                 
-                # لو معرفناش نلاقي رقم آخره 0 أو 5، نقفل الفجوة بالرقم العادي المتاح (عشان الاستمرارية)
-                if final_end is None:
-                    best_k = k
-                    last_actual = unique_seats[curr_student_idx + best_k - 1]
-                    if curr_student_idx + best_k == total_unique_students:
-                        final_end = last_actual
-                    else:
-                        final_end = unique_seats[curr_student_idx + best_k] - 1
+                # إيجاد النهاية المثالية
+                final_end = None
+                best_c = max_c
+                
+                # لو دي الدفعة الأخيرة من الطلبة (واللجنة تسعهم)، حطهم كلهم واقفل التوزيع بدون رجوع للخلف
+                if curr_student_idx + max_c == total_unique_students:
+                    last_actual = unique_seats[curr_student_idx + max_c - 1]
+                    final_end = math.ceil(last_actual / 5.0) * 5 # تقريب رقم النهاية للأشيك
+                    best_c = max_c
+                else:
+                    # لو لسه في طلبة، نحاول نرجع لورا (لحد 9 طلبة) عشان نلاقي نهاية آخره 0 أو 5
+                    for rollback in range(min(10, max_c)): 
+                        test_c = max_c - rollback
+                        if test_c <= 0: continue
+                        
+                        last_included = unique_seats[curr_student_idx + test_c - 1]
+                        next_actual = unique_seats[curr_student_idx + test_c]
+                        
+                        # إيجاد أكبر رقم آخره 0 أو 5 قبل الطالب اللي في اللجنة الجاية
+                        largest_multiple_of_5 = math.floor((next_actual - 1) / 5.0) * 5
+                        
+                        if largest_multiple_of_5 >= last_included:
+                            final_end = largest_multiple_of_5
+                            best_c = test_c
+                            break
+                    
+                    # لو ملقيناش رقم آخره 0 أو 5، نقفل الفجوة بالرقم العادي المتاح للاستمرارية
+                    if final_end is None:
+                        best_c = max_c
+                        final_end = unique_seats[curr_student_idx + best_c] - 1
+                
+                # حساب الكثافة الفعلية (عشان الملاحظات)
+                final_course_counts = {}
+                for i in range(curr_student_idx, curr_student_idx + best_c):
+                    for c in seat_courses.get(unique_seats[i], []):
+                         final_course_counts[c] = final_course_counts.get(c, 0) + 1
+                max_course_load = max(final_course_counts.values()) if final_course_counts else 0
                 
                 # تسجيل بيانات اللجنة
                 result_data.append({
@@ -187,12 +215,12 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     'مكان اللجنة': room_loc,
                     'من': current_range_start,
                     'إلى': final_end,
-                    'ملاحظات': f'حضور فعلي: {best_k} طالب'
+                    'ملاحظات': f'حضور فعلي: {best_c} طالب | أعلى كثافة مادة: {max_course_load}'
                 })
                 
-                # تحديث المؤشرات للجنة اللي بعدها (تبدأ من حيث انتهت اللي قبلها)
+                # تحديث المؤشرات للجنة اللي بعدها (تبدأ من حيث انتهت اللي قبلها بالظبط)
                 current_range_start = final_end + 1
-                curr_student_idx += best_k
+                curr_student_idx += best_c
             
             final_df = pd.DataFrame(result_data)
             
@@ -240,7 +268,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 worksheet.column_dimensions['B'].width = 35 
                 worksheet.column_dimensions['C'].width = 15 
                 worksheet.column_dimensions['D'].width = 15 
-                worksheet.column_dimensions['E'].width = 25 
+                worksheet.column_dimensions['E'].width = 40 
                 
                 # إعدادات الطباعة
                 worksheet.print_area = f"A1:E{worksheet.max_row}"
