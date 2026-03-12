@@ -105,7 +105,7 @@ if st.session_state.rooms_df is None or st.session_state.students_df is None:
                 st.error(f"حدث خطأ أثناء قراءة ملف الطلبة: {e}")
 
 # ==========================================
-# الخطوة 2: الخوارزمية (تم تصحيح السعة والاستمرارية)
+# الخطوة 2: الخوارزمية 
 # ==========================================
 if st.session_state.rooms_df is not None and st.session_state.students_df is not None:
     st.markdown("<h3>الخطوة 2: توليد خريطة اللجان الموحدة</h3>", unsafe_allow_html=True)
@@ -115,7 +115,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
     total_unique_students = len(unique_seats)
     all_subjects = sorted(df_students['اسم المقرر'].unique())
     
-    # تجميع المقررات لكل طالب لتسريع الخوارزمية
     seat_courses = df_students.groupby('رقم الجلوس')['اسم المقرر'].apply(lambda x: list(set(x))).to_dict()
     
     st.info(f"إجمالي عدد الطلبة (بدون تكرار) المطلوب توزيعهم: **{total_unique_students}** طالب.")
@@ -125,7 +124,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
             result_data = []
             curr_student_idx = 0
             
-            # تظبيط البداية لتكون رقم شيك قدر الإمكان
             first_seat = unique_seats[0] if total_unique_students > 0 else 0
             current_range_start = math.floor(first_seat / 5.0) * 5 if first_seat > 0 else 0
             if current_range_start < first_seat and current_range_start % 10 == 0:
@@ -148,7 +146,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     result_data.append(empty_room)
                     continue
                 
-                # 1. إيجاد أقصى عدد نقدر ناخده بحيث ولا مادة تتخطى السعة (عدد الطلبة الفريدين ملوش سقف هنا!)
                 course_counts = {}
                 max_c = 0
                 for i in range(curr_student_idx, total_unique_students):
@@ -162,18 +159,16 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             break
                     
                     if not can_add:
-                        break # تخطينا سعة مادة معينة، نوقف هنا!
+                        break 
                         
                     for c in courses_for_seat:
                         course_counts[c] = course_counts.get(c, 0) + 1
                     max_c += 1
                 
-                # 2. التقفيل وسد الفجوات (0 أو 5)
                 final_end = None
                 best_c = max_c
                 
                 if curr_student_idx + max_c == total_unique_students:
-                    # آخر دفعة طلبة، نقفل الشجرة
                     last_actual = unique_seats[curr_student_idx + max_c - 1]
                     final_end = math.ceil(last_actual / 5.0) * 5
                     best_c = max_c
@@ -185,7 +180,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         last_included = unique_seats[curr_student_idx + test_c - 1]
                         next_actual = unique_seats[curr_student_idx + test_c]
                         
-                        # نختار رقم آخره 0 أو 5 بشرط يغطي آخر طالب، وميدخلش في الطالب الجديد
                         largest_multiple_of_5 = math.floor((next_actual - 1) / 5.0) * 5
                         
                         if largest_multiple_of_5 >= last_included:
@@ -194,18 +188,15 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             break
                     
                     if final_end is None:
-                        # لو ملقيناش رقم شيك، نقفل الفجوة بالرقم اللي قبل الطالب الجديد مباشرة
                         best_c = max_c
                         next_actual = unique_seats[curr_student_idx + best_c]
                         final_end = next_actual - 1
                 
-                # 3. حساب الكثافة الفعلية لكل مادة في اللجنة دي
                 final_course_counts = {}
                 for i in range(curr_student_idx, curr_student_idx + best_c):
                     for c in seat_courses.get(unique_seats[i], []):
                          final_course_counts[c] = final_course_counts.get(c, 0) + 1
                 
-                # 4. تسجيل بيانات اللجنة (شاملة المواد)
                 room_data = {
                     'رقم اللجنة': room_num,
                     'مكان اللجنة': room_loc,
@@ -218,7 +209,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     
                 result_data.append(room_data)
                 
-                # تحديث المؤشرات للجنة اللي بعدها (تبدأ من حيث انتهت اللي قبلها تماماً)
                 current_range_start = final_end + 1
                 curr_student_idx += best_c
             
@@ -229,13 +219,17 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
             else:
                 st.success("✅ تم الانتهاء من التوزيع الموحد بنجاح!")
             
-            # عرض النتيجة على الموقع
-            styled_df = final_df.style.set_properties(**{'text-align': 'right'}).set_table_styles([dict(selector='th', props=[('text-align', 'right')])])
+            # === التعديل هنا: عكس ترتيب الأعمدة لعرضها من اليمين لليسار على الموقع ===
+            display_cols = final_df.columns.tolist()[::-1]
+            df_display = final_df[display_cols]
+            
+            styled_df = df_display.style.set_properties(**{'text-align': 'right'}).set_table_styles([dict(selector='th', props=[('text-align', 'right')])])
             st.dataframe(styled_df, hide_index=True, use_container_width=True)
             
-            # --- ملف الإكسيل الاحترافي للطباعة A4 ---
+            # --- ملف الإكسيل الاحترافي للطباعة A4 (الترتيب الأصلي) ---
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                # نستخدم final_df هنا عشان الإكسيل يطلع ترتيبه مظبوط زي ما هو
                 final_df.to_excel(writer, index=False, sheet_name='خريطة اللجان')
                 workbook = writer.book
                 worksheet = writer.sheets['خريطة اللجان']
@@ -257,7 +251,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     cell.border = thin_border
                 
                 for r_idx in range(2, worksheet.max_row + 1):
-                    is_empty = (worksheet.cell(row=r_idx, column=4).value == '-') # عمود 'من'
+                    is_empty = (worksheet.cell(row=r_idx, column=4).value == '-') 
                     for c_idx in range(1, total_columns + 1):
                         cell = worksheet.cell(row=r_idx, column=c_idx)
                         cell.border = thin_border
@@ -265,19 +259,17 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         if is_empty:
                             cell.fill = empty_fill
                             
-                worksheet.column_dimensions['A'].width = 10 # رقم اللجنة
-                worksheet.column_dimensions['B'].width = 30 # مكان اللجنة
-                worksheet.column_dimensions['C'].width = 12 # سعة اللجنة
-                worksheet.column_dimensions['D'].width = 15 # من
-                worksheet.column_dimensions['E'].width = 15 # إلى
+                worksheet.column_dimensions['A'].width = 10 
+                worksheet.column_dimensions['B'].width = 30 
+                worksheet.column_dimensions['C'].width = 12 
+                worksheet.column_dimensions['D'].width = 15 
+                worksheet.column_dimensions['E'].width = 15 
                 
-                # توسيع أعمدة المواد
                 from openpyxl.utils import get_column_letter
                 for i in range(6, total_columns + 1):
                     col_letter = get_column_letter(i)
                     worksheet.column_dimensions[col_letter].width = 15
                 
-                # إعدادات الطباعة
                 worksheet.print_area = f"A1:{get_column_letter(total_columns)}{worksheet.max_row}"
                 worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
                 worksheet.sheet_properties.pageSetUpPr.fitToPage = True
