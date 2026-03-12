@@ -330,12 +330,9 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 empty_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
                 header_font_white = Font(color="FFFFFF", bold=True, size=12)
                 
-                # جعلنا الفونت الأساسي للبيانات Bold
                 data_font = Font(bold=True, size=12) 
-                # فونت الترويسة
                 meta_font = Font(bold=True, size=14, color="1E3A8A") 
                 
-                # فحص وجود الشعارات
                 fac_logo = "logo_faculty.png" if os.path.exists("logo_faculty.png") else "logo_faculty.jpg" if os.path.exists("logo_faculty.jpg") else None
                 unit_logo = "logo_unit.png" if os.path.exists("logo_unit.png") else "logo_unit.jpg" if os.path.exists("logo_unit.jpg") else None
                 
@@ -347,25 +344,22 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     total_columns = len(current_df.columns)
                     last_col_letter = get_column_letter(total_columns)
                     
-                    # البيانات تبدأ من الصف السادس (هنسيب أول 4 صفوف للترويسة والشعارات)
                     current_df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=5)
                     worksheet = writer.sheets[sheet_name]
                     worksheet.sheet_view.rightToLeft = True 
                     
-                    # 1. إدراج الشعارات (لو موجودة)
                     try:
                         if fac_logo:
                             img1 = xlImage(fac_logo)
                             img1.width, img1.height = 90, 90
-                            worksheet.add_image(img1, 'A1') # يمين (RTL)
+                            worksheet.add_image(img1, 'A1') 
                         if unit_logo:
                             img2 = xlImage(unit_logo)
                             img2.width, img2.height = 90, 90
-                            worksheet.add_image(img2, f'{last_col_letter}1') # يسار
+                            worksheet.add_image(img2, f'{last_col_letter}1') 
                     except Exception:
                         pass
                     
-                    # 2. تصميم الترويسة الاحترافية بدون حدود (Borders) في المنتصف
                     if total_columns > 2:
                         merge_end = get_column_letter(total_columns - 1)
                     else:
@@ -388,14 +382,12 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     
                     last_row = worksheet.max_row
                     
-                    # 3. إنشاء جدول الإكسيل للبيانات
                     table_ref = f"A6:{last_col_letter}{last_row}"
                     tab = Table(displayName=f"TableMap_{idx}", ref=table_ref)
                     style = TableStyleInfo(name="TableStyleMedium2", showFirstColumn=False, showLastColumn=False, showRowStripes=True, showColumnStripes=False)
                     tab.tableStyleInfo = style
                     worksheet.add_table(tab)
                     
-                    # 4. تنسيق الخلايا 
                     for r_idx in range(6, last_row + 1):
                         worksheet.row_dimensions[r_idx].height = 26.25 
                         
@@ -410,13 +402,13 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             cell = worksheet.cell(row=r_idx, column=c_idx)
                             cell.border = thin_border
                             
-                            if r_idx == 6: # صف عناوين الجدول
+                            if r_idx == 6: 
                                 cell.font = header_font_white
                                 cell.alignment = center_align
                             else:
-                                cell.font = data_font # خط عريض لكل البيانات
+                                cell.font = data_font 
                                 
-                                if c_idx == 2: # مكان اللجنة
+                                if c_idx == 2: 
                                     cell.alignment = right_align
                                 else:
                                     cell.alignment = center_align
@@ -424,7 +416,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                                 if is_empty:
                                     cell.fill = empty_fill
                                 
-                    # 5. عرض الأعمدة
                     if sheet_name == 'خريطة اللجان':
                         worksheet.column_dimensions['A'].width = 15 
                         worksheet.column_dimensions['B'].width = 45 
@@ -439,3 +430,48 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         worksheet.column_dimensions['E'].width = 15 
                         worksheet.column_dimensions['F'].width = 40 
                         for i in range(7, total_columns + 1):
+                            worksheet.column_dimensions[get_column_letter(i)].width = 16
+                            
+                    worksheet.print_area = f"A1:{last_col_letter}{last_row}"
+                    worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
+                    
+                    if orientation == 'landscape':
+                        worksheet.page_setup.orientation = worksheet.ORIENTATION_LANDSCAPE
+                    else:
+                        worksheet.page_setup.orientation = worksheet.ORIENTATION_PORTRAIT
+                        
+                    worksheet.sheet_properties.pageSetUpPr.fitToPage = True
+                    worksheet.page_setup.fitToWidth = 1
+                    worksheet.page_setup.fitToHeight = 0
+                    worksheet.print_options.horizontalCentered = True
+                    
+                    worksheet.print_title_rows = '1:6'
+                    
+                    worksheet.oddFooter.center.text = "&12 صفحة رقم (&P) من (&N)"
+                    worksheet.evenFooter.center.text = "&12 صفحة رقم (&P) من (&N)"
+
+            st.markdown("<div style='display: flex; justify-content: flex-end; width: 100%; margin-top: 15px;'>", unsafe_allow_html=True)
+            
+            safe_exam = exam_period.replace(" ", "_")
+            safe_year = academic_year.replace(" ", "")
+            if level_courses.strip():
+                level_part = f"المستوي_{level_courses.strip()}"
+            else:
+                level_part = "غير_محدد"
+                
+            dynamic_file_name = f"خريطة_لجان_{level_part}_{safe_exam}_{safe_year}.xlsx"
+            
+            st.download_button(
+                label="📥 تحميل خريطة اللجان الرسمية (Excel)", 
+                data=output.getvalue(), 
+                file_name=dynamic_file_name, 
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+                type="primary"
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+            
+    st.markdown("---")
+    if st.button("تفريغ البيانات لرفع ملفات جديدة"):
+        st.session_state.rooms_df = None
+        st.session_state.students_df = None
+        st.rerun()
