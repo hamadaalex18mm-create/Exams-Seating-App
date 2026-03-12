@@ -252,8 +252,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
                 center_align = Alignment(horizontal='center', vertical='center')
                 empty_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
-                
-                # خط أبيض عريض مخصص لرؤوس الأعمدة
                 header_font_white = Font(color="FFFFFF", bold=True, size=12)
                 
                 meta_data = [
@@ -282,7 +280,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 tab.tableStyleInfo = style
                 worksheet.add_table(tab)
                 
-                # تنسيق الخلايا
                 for r_idx in range(5, last_row + 1):
                     is_empty = False
                     if r_idx > 5:
@@ -293,7 +290,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         cell.border = thin_border
                         cell.alignment = center_align
                         
-                        # إجبار رؤوس الأعمدة على اللون الأبيض
                         if r_idx == 5:
                             cell.font = header_font_white
                         elif is_empty:
@@ -309,12 +305,20 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     col_letter = get_column_letter(i)
                     worksheet.column_dimensions[col_letter].width = 16
                 
+                # ==========================================
+                # إعدادات الطباعة المتقدمة
+                # ==========================================
                 worksheet.print_area = f"A1:{get_column_letter(total_columns)}{last_row}"
                 worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
+                worksheet.page_setup.orientation = worksheet.ORIENTATION_LANDSCAPE # الطباعة بالعرض (أفقي)
                 worksheet.sheet_properties.pageSetUpPr.fitToPage = True
-                worksheet.page_setup.fitToWidth = 1
-                worksheet.page_setup.fitToHeight = 0
+                worksheet.page_setup.fitToWidth = 1 # كل الأعمدة في صفحة واحدة بالعرض
+                worksheet.page_setup.fitToHeight = 0 # السماح بصفحات متعددة بالطول
                 worksheet.print_options.horizontalCentered = True
+                
+                # تكرار أول 5 صفوف (البيانات الأساسية ورؤوس الجدول) في أعلى كل صفحة مطبوعة
+                worksheet.print_title_rows = '1:5'
+                # ==========================================
             
             st.markdown("<div style='display: flex; justify-content: flex-end; width: 100%; margin-top: 15px;'>", unsafe_allow_html=True)
             
