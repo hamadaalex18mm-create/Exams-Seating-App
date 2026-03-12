@@ -347,25 +347,55 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     worksheet = writer.sheets[sheet_name]
                     worksheet.sheet_view.rightToLeft = True 
                     
-                    # 1. إدراج الشعارات (الحفاظ على النسب الطبيعية Aspect Ratio)
+                    # 1. إدراج الشعارات وتظبيط المحاذاة الدقيقة بالبكسل
+                    target_h = 100 # حجم موحد وثابت للشعارين بدون أي ضغط أو مط
                     try:
+                        from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, AnchorMarker
+                        from openpyxl.drawing.xdr import XDRPositiveSize2D
+                        from openpyxl.utils.units import pixels_to_EMU
+                        
                         if fac_logo:
                             img1 = xlImage(fac_logo)
-                            target_h1 = 115 # حجم طبيعي مش مضغوط
-                            ratio1 = target_h1 / img1.height
+                            ratio1 = target_h / img1.height
                             img1.width = int(img1.width * ratio1)
-                            img1.height = int(target_h1)
-                            worksheet.add_image(img1, 'A1') 
+                            img1.height = int(target_h)
+                            
+                            # تثبيت شعار الكلية أقصى اليمين (العمود الأول) مع مسافة 10 بكسل
+                            size1 = XDRPositiveSize2D(cx=pixels_to_EMU(img1.width), cy=pixels_to_EMU(img1.height))
+                            marker1 = AnchorMarker(col=0, colOff=pixels_to_EMU(10), row=0, rowOff=pixels_to_EMU(5))
+                            img1.anchor = OneCellAnchor(_from=marker1, ext=size1)
+                            worksheet.add_image(img1)
                             
                         if unit_logo:
                             img2 = xlImage(unit_logo)
-                            target_h2 = 135 # تكبير شعار الوحدة زي ما طلبت
-                            ratio2 = target_h2 / img2.height
+                            ratio2 = target_h / img2.height
                             img2.width = int(img2.width * ratio2)
-                            img2.height = int(target_h2)
-                            worksheet.add_image(img2, f'{last_col_letter}1') 
+                            img2.height = int(target_h)
+                            
+                            # تثبيت شعار الوحدة أقصى الشمال بالمللي
+                            col_idx = total_columns - 1
+                            col_w = 45 if sheet_name == 'خريطة اللجان' else 40
+                            col_w_px = col_w * 7.5 # تحويل عرض العمود لبيكسلات
+                            offset_px = int(col_w_px - img2.width - 10) # زقه لآخر الشمال
+                            if offset_px < 0: offset_px = 0
+                            
+                            size2 = XDRPositiveSize2D(cx=pixels_to_EMU(img2.width), cy=pixels_to_EMU(img2.height))
+                            marker2 = AnchorMarker(col=col_idx, colOff=pixels_to_EMU(offset_px), row=0, rowOff=pixels_to_EMU(5))
+                            img2.anchor = OneCellAnchor(_from=marker2, ext=size2)
+                            worksheet.add_image(img2)
+                            
                     except Exception:
-                        pass
+                        # بديل في حالة تعذر تحميل المكتبات الهندسية
+                        if fac_logo:
+                            img1 = xlImage(fac_logo)
+                            ratio1 = target_h / img1.height
+                            img1.width, img1.height = int(img1.width * ratio1), int(target_h)
+                            worksheet.add_image(img1, 'A1')
+                        if unit_logo:
+                            img2 = xlImage(unit_logo)
+                            ratio2 = target_h / img2.height
+                            img2.width, img2.height = int(img2.width * ratio2), int(target_h)
+                            worksheet.add_image(img2, f'{last_col_letter}1')
                     
                     # 2. تصميم الترويسة (الدمج الكلي للتوسيط الدقيق بدون حدود)
                     worksheet.merge_cells(f'A1:{last_col_letter}1')
@@ -382,7 +412,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             cell = worksheet[f'A{r}']
                             cell.alignment = center_align
                             cell.font = meta_font
-                            # مفيش border هنا عشان تطلع عايمة ونضيفة زي الصورة
                     
                     last_row = worksheet.max_row
                     
@@ -408,13 +437,13 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             cell = worksheet.cell(row=r_idx, column=c_idx)
                             cell.border = thin_border
                             
-                            if r_idx == 6: # صف عناوين الجدول
+                            if r_idx == 6: 
                                 cell.font = header_font_white
                                 cell.alignment = center_align
                             else:
                                 cell.font = data_font 
                                 
-                                if c_idx == 2: # مكان اللجنة
+                                if c_idx == 2: 
                                     cell.alignment = right_align
                                 else:
                                     cell.alignment = center_align
@@ -439,7 +468,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         for i in range(7, total_columns + 1):
                             worksheet.column_dimensions[get_column_letter(i)].width = 16
                             
-                    # 6. إعدادات الطباعة والترقيم (Footer & Print Titles)
+                    # 6. إعدادات الطباعة والترقيم
                     worksheet.print_area = f"A1:{last_col_letter}{last_row}"
                     worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
                     
@@ -454,8 +483,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     worksheet.print_options.horizontalCentered = True
                     
                     worksheet.print_title_rows = '1:6'
-                    
-                    # الترقيم بأسفل الصفحة
                     worksheet.oddFooter.center.text = "&12 صفحة رقم (&P) من (&N)"
                     worksheet.evenFooter.center.text = "&12 صفحة رقم (&P) من (&N)"
 
