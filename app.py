@@ -266,7 +266,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 
-                # إعداد قائمة بالشيتات عشان نطبق نفس التنسيق بشكل أنيق
                 sheets_info = [
                     {'df': summary_df, 'name': 'خريطة اللجان', 'orientation': 'portrait'},
                     {'df': final_df, 'name': 'الخريطة التفصيلية', 'orientation': 'landscape'}
@@ -278,8 +277,11 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 
                 thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
                 center_align = Alignment(horizontal='center', vertical='center')
+                right_align = Alignment(horizontal='right', vertical='center') # محاذاة لليمين لمكان اللجنة
+                
                 empty_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
                 header_font_white = Font(color="FFFFFF", bold=True, size=12)
+                data_font = Font(size=12) # فونت 12 للبيانات
                 
                 meta_data = [
                     ("أماكن امتحانات", exam_period),
@@ -292,12 +294,10 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     sheet_name = info['name']
                     orientation = info['orientation']
                     
-                    # حفظ البيانات بدءاً من الصف الخامس
                     current_df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=4)
                     worksheet = writer.sheets[sheet_name]
                     worksheet.sheet_view.rightToLeft = True 
                     
-                    # 1. إضافة بيانات الخريطة (الترويسة)
                     for i, (label, val) in enumerate(meta_data, start=1):
                         worksheet[f'A{i}'] = label
                         worksheet[f'B{i}'] = val
@@ -311,33 +311,43 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     total_columns = len(current_df.columns)
                     last_row = worksheet.max_row
                     
-                    # 2. إنشاء جدول الإكسيل (Table)
                     table_ref = f"A5:{get_column_letter(total_columns)}{last_row}"
                     tab = Table(displayName=f"TableMap_{idx}", ref=table_ref)
                     style = TableStyleInfo(name="TableStyleMedium2", showFirstColumn=False, showLastColumn=False, showRowStripes=True, showColumnStripes=False)
                     tab.tableStyleInfo = style
                     worksheet.add_table(tab)
                     
-                    # 3. تنسيق الخلايا (اللون الأبيض للرأس، وتظليل اللجان الفارغة)
+                    # تنسيق الخلايا (اللون، الفونت، المحاذاة، وارتفاع الصف)
                     for r_idx in range(5, last_row + 1):
+                        # ارتفاع الصف 35 بكسل = 26.25 نقطة في الإكسيل
+                        worksheet.row_dimensions[r_idx].height = 26.25 
+                        
                         is_empty = False
                         if r_idx > 5:
                             if sheet_name == 'خريطة اللجان':
-                                is_empty = (worksheet.cell(row=r_idx, column=3).value == '-') # عمود 'من' في الملخص هو رقم 3
+                                is_empty = (worksheet.cell(row=r_idx, column=3).value == '-') 
                             else:
-                                is_empty = (worksheet.cell(row=r_idx, column=4).value == '-') # عمود 'من' في التفصيلي هو رقم 4
+                                is_empty = (worksheet.cell(row=r_idx, column=4).value == '-') 
                                 
                         for c_idx in range(1, total_columns + 1):
                             cell = worksheet.cell(row=r_idx, column=c_idx)
                             cell.border = thin_border
-                            cell.alignment = center_align
                             
                             if r_idx == 5:
                                 cell.font = header_font_white
-                            elif is_empty:
-                                cell.fill = empty_fill
+                                cell.alignment = center_align
+                            else:
+                                cell.font = data_font # تطبيق فونت 12
                                 
-                    # 4. تظبيط عرض الأعمدة
+                                # محاذاة لليمين للعمود التاني (مكان اللجنة)
+                                if c_idx == 2:
+                                    cell.alignment = right_align
+                                else:
+                                    cell.alignment = center_align
+                                    
+                                if is_empty:
+                                    cell.fill = empty_fill
+                                
                     if sheet_name == 'خريطة اللجان':
                         worksheet.column_dimensions['A'].width = 12 
                         worksheet.column_dimensions['B'].width = 45 
@@ -353,7 +363,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         for i in range(6, total_columns + 1):
                             worksheet.column_dimensions[get_column_letter(i)].width = 16
                             
-                    # 5. إعدادات الطباعة
                     worksheet.print_area = f"A1:{get_column_letter(total_columns)}{last_row}"
                     worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
                     
