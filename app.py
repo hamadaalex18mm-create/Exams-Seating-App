@@ -330,10 +330,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 empty_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
                 header_font_white = Font(color="FFFFFF", bold=True, size=12)
                 
-                # جعلنا الفونت الأساسي للبيانات Bold
                 data_font = Font(bold=True, size=12) 
-                
-                # فونت الترويسة
                 meta_font = Font(bold=True, size=16, color="1E3A8A") 
                 
                 fac_logo = "logo_faculty.png" if os.path.exists("logo_faculty.png") else "logo_faculty.jpg" if os.path.exists("logo_faculty.jpg") else None
@@ -351,33 +348,48 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     worksheet = writer.sheets[sheet_name]
                     worksheet.sheet_view.rightToLeft = True 
                     
-                    # 1. إدراج الشعارات بأحجام كبيرة (150 بكسل)
+                    # 1. إدراج الشعارات (الحفاظ على النسب الطبيعية Aspect Ratio)
                     try:
                         if fac_logo:
                             img1 = xlImage(fac_logo)
-                            img1.width, img1.height = 150, 150
+                            target_h = 100
+                            ratio1 = target_h / img1.height
+                            img1.width = int(img1.width * ratio1)
+                            img1.height = target_h
                             worksheet.add_image(img1, 'A1') 
+                            
                         if unit_logo:
                             img2 = xlImage(unit_logo)
-                            img2.width, img2.height = 150, 150
+                            target_h = 100
+                            ratio2 = target_h / img2.height
+                            img2.width = int(img2.width * ratio2)
+                            img2.height = target_h
+                            # وضع الشعار في العمود الأخير ليكون على الطرف الشمال تماماً
                             worksheet.add_image(img2, f'{last_col_letter}1') 
                     except Exception:
                         pass
                     
-                    # 2. تصميم الترويسة الاحترافية (دمج كل الأعمدة للتوسيط الدقيق)
-                    worksheet.merge_cells(f'A1:{last_col_letter}1')
-                    worksheet.merge_cells(f'A2:{last_col_letter}2')
-                    worksheet.merge_cells(f'A3:{last_col_letter}3')
-                    
-                    worksheet['A1'] = f"أماكن امتحانات: {exam_period}"
-                    worksheet['A2'] = f"العام الجامعي: {academic_year}"
-                    worksheet['A3'] = f"مقررات المستوي: {level_courses}"
+                    # 2. تصميم الترويسة (الدمج في المنتصف فقط لتجنب تداخل الشعارات)
+                    if total_columns > 2:
+                        merge_start = 'B'
+                        merge_end = get_column_letter(total_columns - 1)
+                    else:
+                        merge_start = 'A'
+                        merge_end = 'A'
+                        
+                    if merge_start != merge_end:
+                        worksheet.merge_cells(f'{merge_start}1:{merge_end}1')
+                        worksheet.merge_cells(f'{merge_start}2:{merge_end}2')
+                        worksheet.merge_cells(f'{merge_start}3:{merge_end}3')
+                        
+                    worksheet[f'{merge_start}1'] = f"أماكن امتحانات: {exam_period}"
+                    worksheet[f'{merge_start}2'] = f"العام الجامعي: {academic_year}"
+                    worksheet[f'{merge_start}3'] = f"مقررات المستوي: {level_courses}"
                     
                     for r in range(1, 6):
-                        # ارتفاع الصفوف العلوية عشان الشعار ياخد راحته
                         worksheet.row_dimensions[r].height = 35 
                         if r <= 3:
-                            cell = worksheet[f'A{r}']
+                            cell = worksheet[f'{merge_start}{r}']
                             cell.alignment = center_align
                             cell.font = meta_font
                     
@@ -409,7 +421,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                                 cell.font = header_font_white
                                 cell.alignment = center_align
                             else:
-                                cell.font = data_font # خط عريض لكل البيانات
+                                cell.font = data_font 
                                 
                                 if c_idx == 2: # مكان اللجنة
                                     cell.alignment = right_align
@@ -436,7 +448,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         for i in range(7, total_columns + 1):
                             worksheet.column_dimensions[get_column_letter(i)].width = 16
                             
-                    # 6. إعدادات الطباعة والترقيم (Footer & Print Titles)
+                    # 6. إعدادات الطباعة والترقيم
                     worksheet.print_area = f"A1:{last_col_letter}{last_row}"
                     worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
                     
@@ -450,10 +462,9 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     worksheet.page_setup.fitToHeight = 0
                     worksheet.print_options.horizontalCentered = True
                     
-                    # تثبيت الرأس والشعارات وعنوان الجدول (أول 6 صفوف)
                     worksheet.print_title_rows = '1:6'
                     
-                    # إضافة ترقيم الصفحات في الأسفل بين الأقواس زي ما طلبت
+                    # الترقيم بأسفل الصفحة
                     worksheet.oddFooter.center.text = "&12 صفحة رقم (&P) من (&N)"
                     worksheet.evenFooter.center.text = "&12 صفحة رقم (&P) من (&N)"
 
