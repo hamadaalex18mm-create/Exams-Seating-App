@@ -276,8 +276,10 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 from openpyxl.utils import get_column_letter
                 
                 thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-                center_align = Alignment(horizontal='center', vertical='center')
-                right_align = Alignment(horizontal='right', vertical='center')
+                
+                # السر هنا: إضافة readingOrder=2 لضبط اتجاه النص لـ Right-to-Left زي ما طلبت
+                center_align = Alignment(horizontal='center', vertical='center', readingOrder=2)
+                right_align = Alignment(horizontal='right', vertical='center', readingOrder=2)
                 
                 empty_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
                 header_font_white = Font(color="FFFFFF", bold=True, size=12)
@@ -299,7 +301,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     worksheet = writer.sheets[sheet_name]
                     worksheet.sheet_view.rightToLeft = True 
                     
-                    # تنسيق الرأس الأساسي (البيانات اللي فوق) - كلها متسنترة
                     for i, (label, val) in enumerate(meta_data, start=1):
                         worksheet.row_dimensions[i].height = 26.25 
                         worksheet[f'A{i}'] = label
@@ -307,8 +308,9 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         worksheet[f'A{i}'].border = thin_border
                         worksheet[f'B{i}'].border = thin_border
                         
+                        # المحاذاة في المنتصف مع اتجاه نص (يمين-يسار)
                         worksheet[f'A{i}'].alignment = center_align
-                        worksheet[f'B{i}'].alignment = center_align # رجعناها Center عشان الشكل المتناسق
+                        worksheet[f'B{i}'].alignment = center_align 
                             
                         worksheet[f'A{i}'].font = meta_font
                         worksheet[f'B{i}'].font = meta_font
@@ -316,14 +318,12 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     total_columns = len(current_df.columns)
                     last_row = worksheet.max_row
                     
-                    # إنشاء جدول الإكسيل
                     table_ref = f"A5:{get_column_letter(total_columns)}{last_row}"
                     tab = Table(displayName=f"TableMap_{idx}", ref=table_ref)
                     style = TableStyleInfo(name="TableStyleMedium2", showFirstColumn=False, showLastColumn=False, showRowStripes=True, showColumnStripes=False)
                     tab.tableStyleInfo = style
                     worksheet.add_table(tab)
                     
-                    # تنسيق الخلايا
                     for r_idx in range(5, last_row + 1):
                         worksheet.row_dimensions[r_idx].height = 26.25 
                         
@@ -352,15 +352,14 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                                 if is_empty:
                                     cell.fill = empty_fill
                                 
-                    # تظبيط عرض الأعمدة (توسيع العمود الأول A شوية)
                     if sheet_name == 'خريطة اللجان':
-                        worksheet.column_dimensions['A'].width = 15 # عرضناها عشان الكلام ياخد براحه
+                        worksheet.column_dimensions['A'].width = 15 
                         worksheet.column_dimensions['B'].width = 45 
                         worksheet.column_dimensions['C'].width = 20 
                         worksheet.column_dimensions['D'].width = 20 
                         worksheet.column_dimensions['E'].width = 35 
                     else:
-                        worksheet.column_dimensions['A'].width = 15 # عرضناها هنا كمان
+                        worksheet.column_dimensions['A'].width = 15 
                         worksheet.column_dimensions['B'].width = 35 
                         worksheet.column_dimensions['C'].width = 12 
                         worksheet.column_dimensions['D'].width = 15 
@@ -368,7 +367,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         for i in range(6, total_columns + 1):
                             worksheet.column_dimensions[get_column_letter(i)].width = 16
                             
-                    # إعدادات الطباعة
                     worksheet.print_area = f"A1:{get_column_letter(total_columns)}{last_row}"
                     worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
                     
