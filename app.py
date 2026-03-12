@@ -12,7 +12,6 @@ st.set_page_config(page_title="توزيع أماكن الامتحانات", layo
 # ==========================================
 def format_level(val):
     s = str(val).strip()
-    # تنظيف الكلمة لو موجودة مسبقاً عشان متبقاش مكررة
     s = s.replace("المستوي", "").replace("المستوى", "").strip()
     
     parts = s.split()
@@ -149,14 +148,13 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
     total_unique_students = len(unique_seats)
     all_subjects = sorted(df_students['اسم المقرر'].unique())
     
-    # قاموس لتسريع البحث عن المقررات والمستويات لكل طالب
     seat_courses = df_students.groupby('رقم الجلوس')['اسم المقرر'].apply(lambda x: list(set(x))).to_dict()
     seat_levels = df_students.groupby('رقم الجلوس')['المستوي'].apply(lambda x: list(set(x))).to_dict()
     
     st.info(f"إجمالي عدد الطلبة (بدون تكرار) المطلوب توزيعهم: **{total_unique_students}** طالب.")
     
     if st.button("🚀 بدء التوزيع الذكي الموحد", type="primary"):
-        with st.spinner("جاري التوزيع وقراءة مستويات الطلبة..."):
+        with st.spinner("جاري التوزيع وقراءة مستويات الطلبة وضم البواقي..."):
             result_data = []
             curr_student_idx = 0
             
@@ -193,6 +191,14 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         if course_counts.get(c, 0) + 1 > room_cap:
                             can_add = False
                             break
+                            
+                    # ==========================================
+                    # الحل السحري لضم البواقي (الطلاب المتبقيين أقل من 5)
+                    # ==========================================
+                    remaining_total_students = total_unique_students - i
+                    if not can_add and remaining_total_students < 5:
+                        can_add = True # تجاهل الكسر وكمل إضافة للجنة دي!
+                    # ==========================================
                     
                     if not can_add:
                         break 
@@ -228,9 +234,8 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         next_actual = unique_seats[curr_student_idx + best_c]
                         final_end = next_actual - 1
                 
-                # تجميع المواد والمستويات الفعلية داخل هذه اللجنة
                 final_course_counts = {}
-                room_levels = set() # استخدمنا Set عشان نمنع تكرار المستوى
+                room_levels = set()
                 
                 for i in range(curr_student_idx, curr_student_idx + best_c):
                     current_seat = unique_seats[i]
@@ -240,7 +245,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     for lvl in seat_levels.get(current_seat, []):
                         room_levels.add(str(lvl))
                 
-                # صياغة عمود الملاحظات بناءً على المستويات
                 if room_levels:
                     formatted_levels = [format_level(l) for l in sorted(list(room_levels))]
                     notes_text = " & ".join(formatted_levels)
@@ -253,7 +257,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     'سعة اللجنة': room_cap,
                     'من': current_range_start,
                     'إلى': final_end,
-                    'ملاحظات': notes_text # إضافة عمود الملاحظات هنا
+                    'ملاحظات': notes_text
                 }
                 for subj in all_subjects:
                     room_data[subj] = final_course_counts.get(subj, 0)
@@ -274,7 +278,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     'مكان اللجنة': row['مكان اللجنة'],
                     'بداية اللجنة (من)': row['من'],
                     'نهاية اللجنة (إلى)': row['إلى'],
-                    'ملاحظات': row['ملاحظات'] # قراءة الملاحظات الذكية
+                    'ملاحظات': row['ملاحظات']
                 })
             summary_df = pd.DataFrame(summary_data)
 
@@ -361,7 +365,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         
                         is_empty = False
                         if r_idx > 5:
-                            # البحث عن عمود 'من' لمعرفة إذا كانت اللجنة فارغة
                             if sheet_name == 'خريطة اللجان':
                                 is_empty = (worksheet.cell(row=r_idx, column=3).value == '-') 
                             else:
@@ -377,7 +380,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             else:
                                 cell.font = data_font 
                                 
-                                if c_idx == 2: # مكان اللجنة
+                                if c_idx == 2: 
                                     cell.alignment = right_align
                                 else:
                                     cell.alignment = center_align
@@ -390,14 +393,14 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         worksheet.column_dimensions['B'].width = 45 
                         worksheet.column_dimensions['C'].width = 20 
                         worksheet.column_dimensions['D'].width = 20 
-                        worksheet.column_dimensions['E'].width = 45 # توسيع عمود الملاحظات
+                        worksheet.column_dimensions['E'].width = 45 
                     else:
                         worksheet.column_dimensions['A'].width = 15 
                         worksheet.column_dimensions['B'].width = 35 
                         worksheet.column_dimensions['C'].width = 12 
                         worksheet.column_dimensions['D'].width = 15 
                         worksheet.column_dimensions['E'].width = 15 
-                        worksheet.column_dimensions['F'].width = 40 # توسيع عمود الملاحظات في التفصيلي
+                        worksheet.column_dimensions['F'].width = 40 
                         for i in range(7, total_columns + 1):
                             worksheet.column_dimensions[get_column_letter(i)].width = 16
                             
