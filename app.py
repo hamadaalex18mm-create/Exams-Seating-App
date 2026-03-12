@@ -329,7 +329,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 
                 empty_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
                 header_font_white = Font(color="FFFFFF", bold=True, size=12)
-                
                 data_font = Font(bold=True, size=12) 
                 meta_font = Font(bold=True, size=16, color="1E3A8A") 
                 
@@ -352,46 +351,38 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     try:
                         if fac_logo:
                             img1 = xlImage(fac_logo)
-                            target_h = 100
-                            ratio1 = target_h / img1.height
+                            target_h1 = 115 # حجم طبيعي مش مضغوط
+                            ratio1 = target_h1 / img1.height
                             img1.width = int(img1.width * ratio1)
-                            img1.height = target_h
+                            img1.height = int(target_h1)
                             worksheet.add_image(img1, 'A1') 
                             
                         if unit_logo:
                             img2 = xlImage(unit_logo)
-                            target_h = 100
-                            ratio2 = target_h / img2.height
+                            target_h2 = 135 # تكبير شعار الوحدة زي ما طلبت
+                            ratio2 = target_h2 / img2.height
                             img2.width = int(img2.width * ratio2)
-                            img2.height = target_h
-                            # وضع الشعار في العمود الأخير ليكون على الطرف الشمال تماماً
+                            img2.height = int(target_h2)
                             worksheet.add_image(img2, f'{last_col_letter}1') 
                     except Exception:
                         pass
                     
-                    # 2. تصميم الترويسة (الدمج في المنتصف فقط لتجنب تداخل الشعارات)
-                    if total_columns > 2:
-                        merge_start = 'B'
-                        merge_end = get_column_letter(total_columns - 1)
-                    else:
-                        merge_start = 'A'
-                        merge_end = 'A'
-                        
-                    if merge_start != merge_end:
-                        worksheet.merge_cells(f'{merge_start}1:{merge_end}1')
-                        worksheet.merge_cells(f'{merge_start}2:{merge_end}2')
-                        worksheet.merge_cells(f'{merge_start}3:{merge_end}3')
-                        
-                    worksheet[f'{merge_start}1'] = f"أماكن امتحانات: {exam_period}"
-                    worksheet[f'{merge_start}2'] = f"العام الجامعي: {academic_year}"
-                    worksheet[f'{merge_start}3'] = f"مقررات المستوي: {level_courses}"
+                    # 2. تصميم الترويسة (الدمج الكلي للتوسيط الدقيق بدون حدود)
+                    worksheet.merge_cells(f'A1:{last_col_letter}1')
+                    worksheet.merge_cells(f'A2:{last_col_letter}2')
+                    worksheet.merge_cells(f'A3:{last_col_letter}3')
+                    
+                    worksheet['A1'] = f"أماكن امتحانات: {exam_period}"
+                    worksheet['A2'] = f"العام الجامعي: {academic_year}"
+                    worksheet['A3'] = f"مقررات المستوي: {level_courses}"
                     
                     for r in range(1, 6):
                         worksheet.row_dimensions[r].height = 35 
                         if r <= 3:
-                            cell = worksheet[f'{merge_start}{r}']
+                            cell = worksheet[f'A{r}']
                             cell.alignment = center_align
                             cell.font = meta_font
+                            # مفيش border هنا عشان تطلع عايمة ونضيفة زي الصورة
                     
                     last_row = worksheet.max_row
                     
@@ -448,7 +439,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         for i in range(7, total_columns + 1):
                             worksheet.column_dimensions[get_column_letter(i)].width = 16
                             
-                    # 6. إعدادات الطباعة والترقيم
+                    # 6. إعدادات الطباعة والترقيم (Footer & Print Titles)
                     worksheet.print_area = f"A1:{last_col_letter}{last_row}"
                     worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
                     
