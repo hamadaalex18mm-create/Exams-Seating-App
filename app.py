@@ -229,10 +229,10 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 current_range_start = final_end + 1
                 curr_student_idx += best_c
             
-            # --- إنشاء الداتا فريم التفصيلي (الشيت الثاني) ---
+            # --- إنشاء الداتا فريم التفصيلي ---
             final_df = pd.DataFrame(result_data)
             
-            # --- إنشاء الداتا فريم الملخص (الشيت الأول) ---
+            # --- إنشاء الداتا فريم الملخص ---
             summary_data = []
             for row in result_data:
                 summary_data.append({
@@ -262,7 +262,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 styled_final = final_df[display_final_cols].style.set_properties(**{'text-align': 'right'}).set_table_styles([dict(selector='th', props=[('text-align', 'right')])])
                 st.dataframe(styled_final, hide_index=True, use_container_width=True)
             
-            # --- توليد ملف الإكسيل ذو الشيتين ---
+            # --- توليد ملف الإكسيل ---
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 
@@ -277,12 +277,12 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 
                 thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
                 center_align = Alignment(horizontal='center', vertical='center')
-                right_align = Alignment(horizontal='right', vertical='center') # محاذاة لليمين 
+                right_align = Alignment(horizontal='right', vertical='center')
                 
                 empty_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
                 header_font_white = Font(color="FFFFFF", bold=True, size=12)
-                data_font = Font(size=12) # فونت 12 لبيانات الجدول
-                meta_font = Font(bold=True, size=12) # فونت 12 عريض لرأس الصفحة
+                data_font = Font(size=12)
+                meta_font = Font(bold=True, size=12)
                 
                 meta_data = [
                     ("أماكن امتحانات", exam_period),
@@ -299,20 +299,16 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     worksheet = writer.sheets[sheet_name]
                     worksheet.sheet_view.rightToLeft = True 
                     
-                    # 1. تنسيق البيانات الأساسية أعلى الجدول (صفوف 1 لـ 3)
+                    # تنسيق الرأس الأساسي (البيانات اللي فوق) - كلها متسنترة
                     for i, (label, val) in enumerate(meta_data, start=1):
-                        worksheet.row_dimensions[i].height = 26.25 # ارتفاع الصف 35 بكسل
+                        worksheet.row_dimensions[i].height = 26.25 
                         worksheet[f'A{i}'] = label
                         worksheet[f'B{i}'] = val
                         worksheet[f'A{i}'].border = thin_border
                         worksheet[f'B{i}'].border = thin_border
                         
                         worksheet[f'A{i}'].alignment = center_align
-                        # محاذاة العام الجامعي لليمين عشان الأرقام والشرطة تظبط
-                        if label == "العام الجامعي":
-                            worksheet[f'B{i}'].alignment = right_align
-                        else:
-                            worksheet[f'B{i}'].alignment = center_align
+                        worksheet[f'B{i}'].alignment = center_align # رجعناها Center عشان الشكل المتناسق
                             
                         worksheet[f'A{i}'].font = meta_font
                         worksheet[f'B{i}'].font = meta_font
@@ -320,16 +316,16 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     total_columns = len(current_df.columns)
                     last_row = worksheet.max_row
                     
-                    # 2. إنشاء جدول الإكسيل
+                    # إنشاء جدول الإكسيل
                     table_ref = f"A5:{get_column_letter(total_columns)}{last_row}"
                     tab = Table(displayName=f"TableMap_{idx}", ref=table_ref)
                     style = TableStyleInfo(name="TableStyleMedium2", showFirstColumn=False, showLastColumn=False, showRowStripes=True, showColumnStripes=False)
                     tab.tableStyleInfo = style
                     worksheet.add_table(tab)
                     
-                    # 3. تنسيق خلايا الجدول
+                    # تنسيق الخلايا
                     for r_idx in range(5, last_row + 1):
-                        worksheet.row_dimensions[r_idx].height = 26.25 # ارتفاع الصف 35 بكسل للجدول كمان
+                        worksheet.row_dimensions[r_idx].height = 26.25 
                         
                         is_empty = False
                         if r_idx > 5:
@@ -348,7 +344,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             else:
                                 cell.font = data_font 
                                 
-                                # محاذاة لليمين للعمود التاني (مكان اللجنة)
                                 if c_idx == 2:
                                     cell.alignment = right_align
                                 else:
@@ -357,15 +352,15 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                                 if is_empty:
                                     cell.fill = empty_fill
                                 
-                    # 4. تظبيط عرض الأعمدة
+                    # تظبيط عرض الأعمدة (توسيع العمود الأول A شوية)
                     if sheet_name == 'خريطة اللجان':
-                        worksheet.column_dimensions['A'].width = 12 
+                        worksheet.column_dimensions['A'].width = 15 # عرضناها عشان الكلام ياخد براحه
                         worksheet.column_dimensions['B'].width = 45 
                         worksheet.column_dimensions['C'].width = 20 
                         worksheet.column_dimensions['D'].width = 20 
                         worksheet.column_dimensions['E'].width = 35 
                     else:
-                        worksheet.column_dimensions['A'].width = 12 
+                        worksheet.column_dimensions['A'].width = 15 # عرضناها هنا كمان
                         worksheet.column_dimensions['B'].width = 35 
                         worksheet.column_dimensions['C'].width = 12 
                         worksheet.column_dimensions['D'].width = 15 
@@ -373,7 +368,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         for i in range(6, total_columns + 1):
                             worksheet.column_dimensions[get_column_letter(i)].width = 16
                             
-                    # 5. إعدادات الطباعة
+                    # إعدادات الطباعة
                     worksheet.print_area = f"A1:{get_column_letter(total_columns)}{last_row}"
                     worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
                     
