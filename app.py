@@ -8,6 +8,23 @@ import math
 st.set_page_config(page_title="توزيع أماكن الامتحانات", layout="wide")
 
 # ==========================================
+# دالة ذكية لتحويل أرقام المستويات لنصوص
+# ==========================================
+def format_level(val):
+    s = str(val).strip()
+    # تنظيف الكلمة لو موجودة مسبقاً عشان متبقاش مكررة
+    s = s.replace("المستوي", "").replace("المستوى", "").strip()
+    
+    parts = s.split()
+    if parts:
+        if parts[0] == '1': parts[0] = 'الاول'
+        elif parts[0] == '2': parts[0] = 'الثاني'
+        elif parts[0] == '3': parts[0] = 'الثالث'
+        elif parts[0] == '4': parts[0] = 'الرابع'
+        
+    return "المستوي " + " ".join(parts)
+
+# ==========================================
 # ستايل الواجهة الأساسي
 # ==========================================
 st.markdown(
@@ -132,12 +149,14 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
     total_unique_students = len(unique_seats)
     all_subjects = sorted(df_students['اسم المقرر'].unique())
     
+    # قاموس لتسريع البحث عن المقررات والمستويات لكل طالب
     seat_courses = df_students.groupby('رقم الجلوس')['اسم المقرر'].apply(lambda x: list(set(x))).to_dict()
+    seat_levels = df_students.groupby('رقم الجلوس')['المستوي'].apply(lambda x: list(set(x))).to_dict()
     
     st.info(f"إجمالي عدد الطلبة (بدون تكرار) المطلوب توزيعهم: **{total_unique_students}** طالب.")
     
     if st.button("🚀 بدء التوزيع الذكي الموحد", type="primary"):
-        with st.spinner("جاري التوزيع وبناء جداول الإكسيل الاحترافية..."):
+        with st.spinner("جاري التوزيع وقراءة مستويات الطلبة..."):
             result_data = []
             curr_student_idx = 0
             
@@ -157,7 +176,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 if curr_student_idx >= total_unique_students or room_cap <= 0:
                     empty_room = {
                         'رقم اللجنة': room_num, 'مكان اللجنة': room_loc, 'سعة اللجنة': room_cap,
-                        'من': '-', 'إلى': '-'
+                        'من': '-', 'إلى': '-', 'ملاحظات': 'لجنة فارغة'
                     }
                     for subj in all_subjects: empty_room[subj] = '-'
                     result_data.append(empty_room)
@@ -209,10 +228,24 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         next_actual = unique_seats[curr_student_idx + best_c]
                         final_end = next_actual - 1
                 
+                # تجميع المواد والمستويات الفعلية داخل هذه اللجنة
                 final_course_counts = {}
+                room_levels = set() # استخدمنا Set عشان نمنع تكرار المستوى
+                
                 for i in range(curr_student_idx, curr_student_idx + best_c):
-                    for c in seat_courses.get(unique_seats[i], []):
+                    current_seat = unique_seats[i]
+                    for c in seat_courses.get(current_seat, []):
                          final_course_counts[c] = final_course_counts.get(c, 0) + 1
+                    
+                    for lvl in seat_levels.get(current_seat, []):
+                        room_levels.add(str(lvl))
+                
+                # صياغة عمود الملاحظات بناءً على المستويات
+                if room_levels:
+                    formatted_levels = [format_level(l) for l in sorted(list(room_levels))]
+                    notes_text = " & ".join(formatted_levels)
+                else:
+                    notes_text = ""
                 
                 room_data = {
                     'رقم اللجنة': room_num,
@@ -220,6 +253,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     'سعة اللجنة': room_cap,
                     'من': current_range_start,
                     'إلى': final_end,
+                    'ملاحظات': notes_text # إضافة عمود الملاحظات هنا
                 }
                 for subj in all_subjects:
                     room_data[subj] = final_course_counts.get(subj, 0)
@@ -240,7 +274,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     'مكان اللجنة': row['مكان اللجنة'],
                     'بداية اللجنة (من)': row['من'],
                     'نهاية اللجنة (إلى)': row['إلى'],
-                    'ملاحظات': ''
+                    'ملاحظات': row['ملاحظات'] # قراءة الملاحظات الذكية
                 })
             summary_df = pd.DataFrame(summary_data)
 
@@ -277,7 +311,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 
                 thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
                 
-                # السر هنا: إضافة readingOrder=2 لضبط اتجاه النص لـ Right-to-Left زي ما طلبت
                 center_align = Alignment(horizontal='center', vertical='center', readingOrder=2)
                 right_align = Alignment(horizontal='right', vertical='center', readingOrder=2)
                 
@@ -308,7 +341,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         worksheet[f'A{i}'].border = thin_border
                         worksheet[f'B{i}'].border = thin_border
                         
-                        # المحاذاة في المنتصف مع اتجاه نص (يمين-يسار)
                         worksheet[f'A{i}'].alignment = center_align
                         worksheet[f'B{i}'].alignment = center_align 
                             
@@ -329,6 +361,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         
                         is_empty = False
                         if r_idx > 5:
+                            # البحث عن عمود 'من' لمعرفة إذا كانت اللجنة فارغة
                             if sheet_name == 'خريطة اللجان':
                                 is_empty = (worksheet.cell(row=r_idx, column=3).value == '-') 
                             else:
@@ -344,7 +377,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             else:
                                 cell.font = data_font 
                                 
-                                if c_idx == 2:
+                                if c_idx == 2: # مكان اللجنة
                                     cell.alignment = right_align
                                 else:
                                     cell.alignment = center_align
@@ -357,14 +390,15 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         worksheet.column_dimensions['B'].width = 45 
                         worksheet.column_dimensions['C'].width = 20 
                         worksheet.column_dimensions['D'].width = 20 
-                        worksheet.column_dimensions['E'].width = 35 
+                        worksheet.column_dimensions['E'].width = 45 # توسيع عمود الملاحظات
                     else:
                         worksheet.column_dimensions['A'].width = 15 
                         worksheet.column_dimensions['B'].width = 35 
                         worksheet.column_dimensions['C'].width = 12 
                         worksheet.column_dimensions['D'].width = 15 
                         worksheet.column_dimensions['E'].width = 15 
-                        for i in range(6, total_columns + 1):
+                        worksheet.column_dimensions['F'].width = 40 # توسيع عمود الملاحظات في التفصيلي
+                        for i in range(7, total_columns + 1):
                             worksheet.column_dimensions[get_column_letter(i)].width = 16
                             
                     worksheet.print_area = f"A1:{get_column_letter(total_columns)}{last_row}"
