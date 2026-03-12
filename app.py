@@ -304,15 +304,20 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
             
             st.markdown("<div style='display: flex; justify-content: flex-end; width: 100%; margin-top: 15px;'>", unsafe_allow_html=True)
             
-            # === التعديل هنا: تسمية ديناميكية تشمل مقررات المستوى ===
+            # === التسمية الديناميكية المحدثة بإضافة كلمة "المستوي" ===
             safe_exam = exam_period.replace(" ", "_")
             safe_year = academic_year.replace(" ", "")
-            safe_level = level_courses.strip() if level_courses.strip() else "بدون_مستوى"
+            if level_courses.strip():
+                level_part = f"المستوي_{level_courses.strip()}"
+            else:
+                level_part = "غير_محدد"
+                
+            dynamic_file_name = f"خريطة_لجان_{level_part}_{safe_exam}_{safe_year}.xlsx"
             
             st.download_button(
                 label="📥 تحميل خريطة اللجان الشاملة (Excel)", 
                 data=output.getvalue(), 
-                file_name=f"خريطة_لجان_{safe_level}_{safe_exam}_{safe_year}.xlsx", 
+                file_name=dynamic_file_name, 
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
                 type="primary"
             )
