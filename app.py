@@ -105,29 +105,31 @@ if st.session_state.rooms_df is None or st.session_state.students_df is None:
                 st.error(f"حدث خطأ أثناء قراءة ملف الطلبة: {e}")
 
 # ==========================================
-# الخطوة 2: خوارزمية الشجرة الموحدة
+# الخطوة 2: الخوارزمية (تم تصحيح السعة والاستمرارية)
 # ==========================================
 if st.session_state.rooms_df is not None and st.session_state.students_df is not None:
     st.markdown("<h3>الخطوة 2: توليد خريطة اللجان الموحدة</h3>", unsafe_allow_html=True)
     
-    # استخراج أرقام الجلوس الفريدة والمقررات لكل طالب
     df_students = st.session_state.students_df
     unique_seats = sorted(df_students['رقم الجلوس'].unique())
     total_unique_students = len(unique_seats)
+    all_subjects = sorted(df_students['اسم المقرر'].unique())
     
-    # تجميع المقررات لكل طالب (بدون تكرار لنفس المادة للطالب الواحد)
+    # تجميع المقررات لكل طالب لتسريع الخوارزمية
     seat_courses = df_students.groupby('رقم الجلوس')['اسم المقرر'].apply(lambda x: list(set(x))).to_dict()
     
     st.info(f"إجمالي عدد الطلبة (بدون تكرار) المطلوب توزيعهم: **{total_unique_students}** طالب.")
     
     if st.button("🚀 بدء التوزيع الذكي الموحد", type="primary"):
-        with st.spinner("جاري بناء الشجرة الموحدة وسد الفجوات..."):
+        with st.spinner("جاري التوزيع (حسب سعة كل مقرر) وسد الفجوات..."):
             result_data = []
             curr_student_idx = 0
             
-            # البداية من أول طالب فعلي (نحاول نظبط أول رقم على 0 أو 5 لو أمكن)
+            # تظبيط البداية لتكون رقم شيك قدر الإمكان
             first_seat = unique_seats[0] if total_unique_students > 0 else 0
             current_range_start = math.floor(first_seat / 5.0) * 5 if first_seat > 0 else 0
+            if current_range_start < first_seat and current_range_start % 10 == 0:
+                current_range_start += 1
             
             rooms_list = st.session_state.rooms_df.to_dict('records')
             
@@ -137,27 +139,22 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 try: room_cap = int(room['سعة اللجنة'])
                 except: room_cap = 0
                 
-                # اللجان الفارغة في حالة انتهاء الطلبة
                 if curr_student_idx >= total_unique_students or room_cap <= 0:
-                    result_data.append({
-                        'رقم اللجنة': room_num,
-                        'مكان اللجنة': room_loc,
-                        'من': '-',
-                        'إلى': '-',
-                        'ملاحظات': 'لجنة فارغة'
-                    })
+                    empty_room = {
+                        'رقم اللجنة': room_num, 'مكان اللجنة': room_loc, 'سعة اللجنة': room_cap,
+                        'من': '-', 'إلى': '-'
+                    }
+                    for subj in all_subjects: empty_room[subj] = '-'
+                    result_data.append(empty_room)
                     continue
                 
-                # حساب أقصى عدد من الطلبة يمكن إضافته بدون كسر السعة الإجمالية أو سعة أي مقرر
+                # 1. إيجاد أقصى عدد نقدر ناخده بحيث ولا مادة تتخطى السعة (عدد الطلبة الفريدين ملوش سقف هنا!)
                 course_counts = {}
                 max_c = 0
                 for i in range(curr_student_idx, total_unique_students):
                     seat = unique_seats[i]
                     courses_for_seat = seat_courses.get(seat, [])
                     
-                    if (i - curr_student_idx + 1) > room_cap:
-                        break # تخطينا السعة الإجمالية للجنة
-                        
                     can_add = True
                     for c in courses_for_seat:
                         if course_counts.get(c, 0) + 1 > room_cap:
@@ -165,23 +162,22 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             break
                     
                     if not can_add:
-                        break # تخطينا سعة أحد المقررات
+                        break # تخطينا سعة مادة معينة، نوقف هنا!
                         
                     for c in courses_for_seat:
                         course_counts[c] = course_counts.get(c, 0) + 1
                     max_c += 1
                 
-                # إيجاد النهاية المثالية
+                # 2. التقفيل وسد الفجوات (0 أو 5)
                 final_end = None
                 best_c = max_c
                 
-                # لو دي الدفعة الأخيرة من الطلبة (واللجنة تسعهم)، حطهم كلهم واقفل التوزيع بدون رجوع للخلف
                 if curr_student_idx + max_c == total_unique_students:
+                    # آخر دفعة طلبة، نقفل الشجرة
                     last_actual = unique_seats[curr_student_idx + max_c - 1]
-                    final_end = math.ceil(last_actual / 5.0) * 5 # تقريب رقم النهاية للأشيك
+                    final_end = math.ceil(last_actual / 5.0) * 5
                     best_c = max_c
                 else:
-                    # لو لسه في طلبة، نحاول نرجع لورا (لحد 9 طلبة) عشان نلاقي نهاية آخره 0 أو 5
                     for rollback in range(min(10, max_c)): 
                         test_c = max_c - rollback
                         if test_c <= 0: continue
@@ -189,7 +185,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         last_included = unique_seats[curr_student_idx + test_c - 1]
                         next_actual = unique_seats[curr_student_idx + test_c]
                         
-                        # إيجاد أكبر رقم آخره 0 أو 5 قبل الطالب اللي في اللجنة الجاية
+                        # نختار رقم آخره 0 أو 5 بشرط يغطي آخر طالب، وميدخلش في الطالب الجديد
                         largest_multiple_of_5 = math.floor((next_actual - 1) / 5.0) * 5
                         
                         if largest_multiple_of_5 >= last_included:
@@ -197,28 +193,32 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             best_c = test_c
                             break
                     
-                    # لو ملقيناش رقم آخره 0 أو 5، نقفل الفجوة بالرقم العادي المتاح للاستمرارية
                     if final_end is None:
+                        # لو ملقيناش رقم شيك، نقفل الفجوة بالرقم اللي قبل الطالب الجديد مباشرة
                         best_c = max_c
-                        final_end = unique_seats[curr_student_idx + best_c] - 1
+                        next_actual = unique_seats[curr_student_idx + best_c]
+                        final_end = next_actual - 1
                 
-                # حساب الكثافة الفعلية (عشان الملاحظات)
+                # 3. حساب الكثافة الفعلية لكل مادة في اللجنة دي
                 final_course_counts = {}
                 for i in range(curr_student_idx, curr_student_idx + best_c):
                     for c in seat_courses.get(unique_seats[i], []):
                          final_course_counts[c] = final_course_counts.get(c, 0) + 1
-                max_course_load = max(final_course_counts.values()) if final_course_counts else 0
                 
-                # تسجيل بيانات اللجنة
-                result_data.append({
+                # 4. تسجيل بيانات اللجنة (شاملة المواد)
+                room_data = {
                     'رقم اللجنة': room_num,
                     'مكان اللجنة': room_loc,
+                    'سعة اللجنة': room_cap,
                     'من': current_range_start,
                     'إلى': final_end,
-                    'ملاحظات': f'حضور فعلي: {best_c} طالب | أعلى كثافة مادة: {max_course_load}'
-                })
+                }
+                for subj in all_subjects:
+                    room_data[subj] = final_course_counts.get(subj, 0)
+                    
+                result_data.append(room_data)
                 
-                # تحديث المؤشرات للجنة اللي بعدها (تبدأ من حيث انتهت اللي قبلها بالظبط)
+                # تحديث المؤشرات للجنة اللي بعدها (تبدأ من حيث انتهت اللي قبلها تماماً)
                 current_range_start = final_end + 1
                 curr_student_idx += best_c
             
@@ -245,10 +245,11 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
                 center_align = Alignment(horizontal='center', vertical='center')
                 header_fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
-                header_font = Font(color="FFFFFF", bold=True, size=12)
+                header_font = Font(color="FFFFFF", bold=True, size=11)
                 empty_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
                 
-                for col_num in range(1, 6):
+                total_columns = len(final_df.columns)
+                for col_num in range(1, total_columns + 1):
                     cell = worksheet.cell(row=1, column=col_num)
                     cell.fill = header_fill
                     cell.font = header_font
@@ -256,22 +257,28 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     cell.border = thin_border
                 
                 for r_idx in range(2, worksheet.max_row + 1):
-                    is_empty = (worksheet.cell(row=r_idx, column=3).value == '-')
-                    for c_idx in range(1, 6):
+                    is_empty = (worksheet.cell(row=r_idx, column=4).value == '-') # عمود 'من'
+                    for c_idx in range(1, total_columns + 1):
                         cell = worksheet.cell(row=r_idx, column=c_idx)
                         cell.border = thin_border
                         cell.alignment = center_align
                         if is_empty:
                             cell.fill = empty_fill
                             
-                worksheet.column_dimensions['A'].width = 12 
-                worksheet.column_dimensions['B'].width = 35 
-                worksheet.column_dimensions['C'].width = 15 
-                worksheet.column_dimensions['D'].width = 15 
-                worksheet.column_dimensions['E'].width = 40 
+                worksheet.column_dimensions['A'].width = 10 # رقم اللجنة
+                worksheet.column_dimensions['B'].width = 30 # مكان اللجنة
+                worksheet.column_dimensions['C'].width = 12 # سعة اللجنة
+                worksheet.column_dimensions['D'].width = 15 # من
+                worksheet.column_dimensions['E'].width = 15 # إلى
+                
+                # توسيع أعمدة المواد
+                from openpyxl.utils import get_column_letter
+                for i in range(6, total_columns + 1):
+                    col_letter = get_column_letter(i)
+                    worksheet.column_dimensions[col_letter].width = 15
                 
                 # إعدادات الطباعة
-                worksheet.print_area = f"A1:E{worksheet.max_row}"
+                worksheet.print_area = f"A1:{get_column_letter(total_columns)}{worksheet.max_row}"
                 worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
                 worksheet.sheet_properties.pageSetUpPr.fitToPage = True
                 worksheet.page_setup.fitToWidth = 1
@@ -280,7 +287,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
             
             st.markdown("<div style='display: flex; justify-content: flex-end; width: 100%; margin-top: 15px;'>", unsafe_allow_html=True)
             st.download_button(
-                label="📥 تحميل خريطة اللجان للطباعة (Excel)", 
+                label="📥 تحميل خريطة اللجان الشاملة (Excel)", 
                 data=output.getvalue(), 
                 file_name="خريطة_أماكن_الامتحانات.xlsx", 
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
