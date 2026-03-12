@@ -2,12 +2,13 @@ import streamlit as st
 import pandas as pd
 import io
 import os
+import math
 
 # إعدادات الصفحة
 st.set_page_config(page_title="توزيع أماكن الامتحانات", layout="wide")
 
 # ==========================================
-# ستايل الواجهة
+# ستايل الواجهة الأساسي
 # ==========================================
 st.markdown(
     """
@@ -40,7 +41,7 @@ with col_left:
     if os.path.exists("logo_faculty.png"): st.image("logo_faculty.png", use_container_width=True)
     elif os.path.exists("logo_faculty.jpg"): st.image("logo_faculty.jpg", use_container_width=True)
 with col_space:
-    st.markdown("<div style='display: flex; justify-content: center; align-items: center; height: 100%; margin-top: 20px;'><h1 style='margin: 0;'>توزيع أماكن الامتحانات (الشجرة الموحدة)</h1></div>", unsafe_allow_html=True)
+    st.markdown("<div style='display: flex; justify-content: center; align-items: center; height: 100%; margin-top: 20px;'><h1 style='margin: 0;'>توزيع أماكن الامتحانات (الشجرة)</h1></div>", unsafe_allow_html=True)
 with col_right:
     if os.path.exists("logo_unit.png"): st.image("logo_unit.png", use_container_width=True)
     elif os.path.exists("logo_unit.jpg"): st.image("logo_unit.jpg", use_container_width=True)
@@ -109,20 +110,20 @@ if st.session_state.rooms_df is None or st.session_state.students_df is None:
 if st.session_state.rooms_df is not None and st.session_state.students_df is not None:
     st.markdown("<h3>الخطوة 2: توليد خريطة اللجان الموحدة</h3>", unsafe_allow_html=True)
     
-    # 1. استخراج أرقام الجلوس الفريدة وترتيبها
+    # استخراج أرقام الجلوس الفريدة وترتيبها
     df_students = st.session_state.students_df
     unique_seats = sorted(df_students['رقم الجلوس'].unique())
     total_unique_students = len(unique_seats)
     
-    # 2. إنشاء قاموس سريع لمعرفة كل طالب بيمتحن إيه (عشان الأداء يكون سريع جداً)
-    seat_courses = df_students.groupby('رقم الجلوس')['اسم المقرر'].apply(list).to_dict()
-    
     st.info(f"إجمالي عدد الطلبة (بدون تكرار) المطلوب توزيعهم: **{total_unique_students}** طالب.")
     
     if st.button("🚀 بدء التوزيع الذكي الموحد", type="primary"):
-        with st.spinner("جاري التوزيع والتأكد من عدم تخطي السعة في أي مقرر..."):
+        with st.spinner("جاري بناء الشجرة الموحدة وسد الفجوات..."):
             result_data = []
             curr_student_idx = 0
+            
+            # البداية من أول طالب فعلي
+            current_range_start = unique_seats[0] if total_unique_students > 0 else 0
             rooms_list = st.session_state.rooms_df.to_dict('records')
             
             for room in rooms_list:
@@ -131,7 +132,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 try: room_cap = int(room['سعة اللجنة'])
                 except: room_cap = 0
                 
-                # لو الطلبة خلصوا، قفل باقي اللجان على إنها فارغة
+                # اللجان الفارغة في حالة انتهاء الطلبة
                 if curr_student_idx >= total_unique_students or room_cap <= 0:
                     result_data.append({
                         'رقم اللجنة': room_num,
@@ -142,62 +143,56 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     })
                     continue
                 
-                # خوارزمية التعبئة بدون كسر سعة أي مقرر
-                course_counts = {}
-                max_idx = curr_student_idx
+                # حساب عدد الطلبة المتبقين وأقصى عدد نقدر ناخده في اللجنة دي
+                remaining = total_unique_students - curr_student_idx
+                k = min(room_cap, remaining)
                 
-                for i in range(curr_student_idx, total_unique_students):
-                    seat = unique_seats[i]
-                    courses_for_seat = seat_courses.get(seat, [])
+                # إيجاد النهاية المثالية (بدون فجوات وبأرقام شيك)
+                final_end = None
+                best_k = k
+                
+                for rollback in range(min(10, k)): # نجرب نرجع لورا لحد 9 طلبة عشان التقفيل
+                    test_k = k - rollback
+                    last_actual = unique_seats[curr_student_idx + test_k - 1]
                     
-                    # هل إضافة الطالب ده هتكسر السعة في أي مادة؟
-                    can_add = True
-                    for c in courses_for_seat:
-                        if course_counts.get(c, 0) + 1 > room_cap:
-                            can_add = False
+                    if curr_student_idx + test_k == total_unique_students:
+                        # دي آخر لجنة فيها طلبة! نقفلها على أقرب 0 أو 5
+                        final_end = math.ceil(last_actual / 5.0) * 5
+                        best_k = test_k
+                        break
+                    else:
+                        # في طلبة تانيين، لازم نقفل الفجوة مع الطالب اللي جاي
+                        next_actual = unique_seats[curr_student_idx + test_k]
+                        
+                        # نختار أكبر رقم آخره 0 أو 5 يكون قبل الطالب اللي جاي مباشرة
+                        X = math.floor((next_actual - 1) / 5.0) * 5
+                        
+                        if X >= last_actual: # لو الرقم ده مغطي كل طلبة اللجنة، يبقى ممتاز!
+                            final_end = X
+                            best_k = test_k
                             break
-                    
-                    if not can_add:
-                        break # نوقف قبل ما نضيف الطالب ده
-                    
-                    # لو السعة تمام، ضيف الطالب للمواد بتاعته وكمل
-                    for c in courses_for_seat:
-                        course_counts[c] = course_counts.get(c, 0) + 1
-                    max_idx = i
                 
-                # تطبيق اللمسة الإبداعية: التقفيل على 0 أو 5 (الرجوع للخلف كحد أقصى 9 خطوات)
-                best_end_idx = max_idx
-                for p in range(10): # من 0 لـ 9
-                    check_idx = max_idx - p
-                    if check_idx < curr_student_idx: # عشان منرجعش للجنة اللي قبلها
-                        break
-                    seat = unique_seats[check_idx]
-                    if seat % 5 == 0:
-                        best_end_idx = check_idx
-                        break
+                # لو معرفناش نلاقي رقم آخره 0 أو 5، نقفل الفجوة بالرقم العادي المتاح (عشان الاستمرارية)
+                if final_end is None:
+                    best_k = k
+                    last_actual = unique_seats[curr_student_idx + best_k - 1]
+                    if curr_student_idx + best_k == total_unique_students:
+                        final_end = last_actual
+                    else:
+                        final_end = unique_seats[curr_student_idx + best_k] - 1
                 
                 # تسجيل بيانات اللجنة
-                start_seat = unique_seats[curr_student_idx]
-                end_seat = unique_seats[best_end_idx]
-                global_count = best_end_idx - curr_student_idx + 1
-                
-                # حساب أقصى كثافة فعلية بعد التقفيل (عشان الملاحظات)
-                final_course_counts = {}
-                for i in range(curr_student_idx, best_end_idx + 1):
-                    for c in seat_courses.get(unique_seats[i], []):
-                         final_course_counts[c] = final_course_counts.get(c, 0) + 1
-                max_course_load = max(final_course_counts.values()) if final_course_counts else 0
-                
                 result_data.append({
                     'رقم اللجنة': room_num,
                     'مكان اللجنة': room_loc,
-                    'من': start_seat,
-                    'إلى': end_seat,
-                    'ملاحظات': f'نطاق: {global_count} طالب | أعلى كثافة لمادة: {max_course_load} (سعة: {room_cap})'
+                    'من': current_range_start,
+                    'إلى': final_end,
+                    'ملاحظات': f'حضور فعلي: {best_k} طالب'
                 })
                 
-                # تحريك المؤشر للطلبة اللي بعدهم
-                curr_student_idx = best_end_idx + 1
+                # تحديث المؤشرات للجنة اللي بعدها (تبدأ من حيث انتهت اللي قبلها)
+                current_range_start = final_end + 1
+                curr_student_idx += best_k
             
             final_df = pd.DataFrame(result_data)
             
@@ -206,11 +201,11 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
             else:
                 st.success("✅ تم الانتهاء من التوزيع الموحد بنجاح!")
             
-            # عرض النتيجة
+            # عرض النتيجة على الموقع
             styled_df = final_df.style.set_properties(**{'text-align': 'right'}).set_table_styles([dict(selector='th', props=[('text-align', 'right')])])
             st.dataframe(styled_df, hide_index=True, use_container_width=True)
             
-            # --- ملف الإكسيل للطباعة ---
+            # --- ملف الإكسيل الاحترافي للطباعة A4 ---
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 final_df.to_excel(writer, index=False, sheet_name='خريطة اللجان')
@@ -245,8 +240,9 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 worksheet.column_dimensions['B'].width = 35 
                 worksheet.column_dimensions['C'].width = 15 
                 worksheet.column_dimensions['D'].width = 15 
-                worksheet.column_dimensions['E'].width = 45 
+                worksheet.column_dimensions['E'].width = 25 
                 
+                # إعدادات الطباعة
                 worksheet.print_area = f"A1:E{worksheet.max_row}"
                 worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
                 worksheet.sheet_properties.pageSetUpPr.fitToPage = True
@@ -256,9 +252,9 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
             
             st.markdown("<div style='display: flex; justify-content: flex-end; width: 100%; margin-top: 15px;'>", unsafe_allow_html=True)
             st.download_button(
-                label="📥 تحميل خريطة اللجان الموحدة (Excel)", 
+                label="📥 تحميل خريطة اللجان للطباعة (Excel)", 
                 data=output.getvalue(), 
-                file_name="توزيع_أماكن_الامتحانات_الموحد.xlsx", 
+                file_name="خريطة_أماكن_الامتحانات.xlsx", 
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
                 type="primary"
             )
