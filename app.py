@@ -8,7 +8,7 @@ import math
 st.set_page_config(page_title="توزيع أماكن الامتحانات", layout="wide")
 
 # ==========================================
-# دالة ذكية لتحويل أرقام المستويات لنصوص (بدون تكرار كلمة المستوي)
+# دالة ذكية لتحويل أرقام المستويات لنصوص (بدون تكرار)
 # ==========================================
 def format_level(val):
     s = str(val).strip()
@@ -21,7 +21,7 @@ def format_level(val):
         elif parts[0] == '3': parts[0] = 'الثالث'
         elif parts[0] == '4': parts[0] = 'الرابع'
         
-    return " ".join(parts) # بنرجع الرقم والشعبة بس من غير كلمة المستوي
+    return " ".join(parts)
 
 # ==========================================
 # ستايل الواجهة الأساسي
@@ -47,7 +47,6 @@ st.markdown(
         text-align: right !important; justify-content: flex-end !important; font-size: 15px !important;
     }
     
-    /* ستايل التبويبات */
     .stTabs [data-baseweb="tab-list"] { gap: 10px; justify-content: flex-end; }
     .stTabs [data-baseweb="tab"] { font-size: 18px; font-weight: bold; background-color: #f0f4f8; border-radius: 5px 5px 0 0; padding: 10px 20px; }
     .stTabs [aria-selected="true"] { background-color: #1E3A8A !important; color: white !important; }
@@ -153,8 +152,8 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
     
     st.info(f"إجمالي عدد الطلبة (بدون تكرار) المطلوب توزيعهم: **{total_unique_students}** طالب.")
     
-    if st.button("🚀 بدء التوزيع الذكي الموحد", type="primary"):
-        with st.spinner("جاري التوزيع وقراءة مستويات الطلبة وتلخيص الملاحظات..."):
+    if st.button("🚀 بدء التوزيع وتوليد الوثائق الرسمية", type="primary"):
+        with st.spinner("جاري التوزيع والتنسيق الاحترافي لملفات الإكسيل..."):
             result_data = []
             curr_student_idx = 0
             
@@ -241,13 +240,8 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     for lvl in seat_levels.get(current_seat, []):
                         room_levels.add(str(lvl))
                 
-                # ==========================================
-                # اللمسة الجديدة: إضافة "المستوي" مرة واحدة في البداية
-                # ==========================================
                 if room_levels:
-                    # نرتب المستويات وهي أرقام الأول عشان الترتيب يطلع صح (1, 2, 3) مش أبجدي
                     sorted_raw_levels = sorted(list(room_levels))
-                    
                     formatted_levels = []
                     for l in sorted_raw_levels:
                         f_lvl = format_level(l)
@@ -258,21 +252,18 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         simplified_levels = []
                         for lvl in formatted_levels:
                             words = lvl.split()
-                            # لو الجملة فيها شعبة (زي: الثالث ادارة انتظام)
                             if len(words) >= 3:
-                                simplified = f"{words[0]} {words[-1]}" # الأول + انتظام
+                                simplified = f"{words[0]} {words[-1]}" 
                                 if simplified not in simplified_levels:
                                     simplified_levels.append(simplified)
                             else:
                                 if lvl not in simplified_levels:
                                     simplified_levels.append(lvl)
-                        
                         notes_text = "المستوي " + " & ".join(simplified_levels)
                     else:
                         notes_text = "المستوي " + " & ".join(formatted_levels)
                 else:
                     notes_text = ""
-                # ==========================================
                 
                 room_data = {
                     'رقم اللجنة': room_num,
@@ -290,10 +281,8 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 current_range_start = final_end + 1
                 curr_student_idx += best_c
             
-            # --- إنشاء الداتا فريم التفصيلي ---
             final_df = pd.DataFrame(result_data)
             
-            # --- إنشاء الداتا فريم الملخص ---
             summary_data = []
             for row in result_data:
                 summary_data.append({
@@ -310,20 +299,17 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
             else:
                 st.success("✅ تم الانتهاء من التوزيع وإنشاء الشيتين بنجاح!")
 
-            # --- عرض التبويبات على الموقع ---
             tab1, tab2 = st.tabs(["📄 خريطة اللجان (ملخص)", "📊 الخريطة التفصيلية (بالمواد)"])
-            
             with tab1:
                 display_summary_cols = summary_df.columns.tolist()[::-1]
                 styled_summary = summary_df[display_summary_cols].style.set_properties(**{'text-align': 'right'}).set_table_styles([dict(selector='th', props=[('text-align', 'right')])])
                 st.dataframe(styled_summary, hide_index=True, use_container_width=True)
-                
             with tab2:
                 display_final_cols = final_df.columns.tolist()[::-1]
                 styled_final = final_df[display_final_cols].style.set_properties(**{'text-align': 'right'}).set_table_styles([dict(selector='th', props=[('text-align', 'right')])])
                 st.dataframe(styled_final, hide_index=True, use_container_width=True)
             
-            # --- توليد ملف الإكسيل ---
+            # --- توليد ملف الإكسيل الاحترافي باللوجوهات والفوتر ---
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 
@@ -335,59 +321,86 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 from openpyxl.styles import Alignment, Border, Side, Font, PatternFill
                 from openpyxl.worksheet.table import Table, TableStyleInfo
                 from openpyxl.utils import get_column_letter
+                from openpyxl.drawing.image import Image as xlImage
                 
                 thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-                
                 center_align = Alignment(horizontal='center', vertical='center', readingOrder=2)
                 right_align = Alignment(horizontal='right', vertical='center', readingOrder=2)
                 
                 empty_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
                 header_font_white = Font(color="FFFFFF", bold=True, size=12)
-                data_font = Font(size=12)
-                meta_font = Font(bold=True, size=12)
                 
-                meta_data = [
-                    ("أماكن امتحانات", exam_period),
-                    ("العام الجامعي", academic_year),
-                    ("مقررات المستوي", level_courses)
-                ]
+                # جعلنا الفونت الأساسي للبيانات Bold
+                data_font = Font(bold=True, size=12) 
+                # فونت الترويسة
+                meta_font = Font(bold=True, size=14, color="1E3A8A") 
+                
+                # فحص وجود الشعارات
+                fac_logo = "logo_faculty.png" if os.path.exists("logo_faculty.png") else "logo_faculty.jpg" if os.path.exists("logo_faculty.jpg") else None
+                unit_logo = "logo_unit.png" if os.path.exists("logo_unit.png") else "logo_unit.jpg" if os.path.exists("logo_unit.jpg") else None
                 
                 for idx, info in enumerate(sheets_info):
                     current_df = info['df']
                     sheet_name = info['name']
                     orientation = info['orientation']
                     
-                    current_df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=4)
+                    total_columns = len(current_df.columns)
+                    last_col_letter = get_column_letter(total_columns)
+                    
+                    # البيانات تبدأ من الصف السادس (هنسيب أول 4 صفوف للترويسة والشعارات)
+                    current_df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=5)
                     worksheet = writer.sheets[sheet_name]
                     worksheet.sheet_view.rightToLeft = True 
                     
-                    for i, (label, val) in enumerate(meta_data, start=1):
-                        worksheet.row_dimensions[i].height = 26.25 
-                        worksheet[f'A{i}'] = label
-                        worksheet[f'B{i}'] = val
-                        worksheet[f'A{i}'].border = thin_border
-                        worksheet[f'B{i}'].border = thin_border
-                        
-                        worksheet[f'A{i}'].alignment = center_align
-                        worksheet[f'B{i}'].alignment = center_align 
-                            
-                        worksheet[f'A{i}'].font = meta_font
-                        worksheet[f'B{i}'].font = meta_font
+                    # 1. إدراج الشعارات (لو موجودة)
+                    try:
+                        if fac_logo:
+                            img1 = xlImage(fac_logo)
+                            img1.width, img1.height = 90, 90
+                            worksheet.add_image(img1, 'A1') # يمين (RTL)
+                        if unit_logo:
+                            img2 = xlImage(unit_logo)
+                            img2.width, img2.height = 90, 90
+                            worksheet.add_image(img2, f'{last_col_letter}1') # يسار
+                    except Exception:
+                        pass
                     
-                    total_columns = len(current_df.columns)
+                    # 2. تصميم الترويسة الاحترافية بدون حدود (Borders) في المنتصف
+                    if total_columns > 2:
+                        merge_end = get_column_letter(total_columns - 1)
+                    else:
+                        merge_end = 'A'
+                        
+                    worksheet.merge_cells(f'B1:{merge_end}1')
+                    worksheet.merge_cells(f'B2:{merge_end}2')
+                    worksheet.merge_cells(f'B3:{merge_end}3')
+                    
+                    worksheet['B1'] = f"أماكن امتحانات: {exam_period}"
+                    worksheet['B2'] = f"العام الجامعي: {academic_year}"
+                    worksheet['B3'] = f"مقررات المستوي: {level_courses}"
+                    
+                    for r in range(1, 6):
+                        worksheet.row_dimensions[r].height = 26.25 
+                        if r <= 3:
+                            cell = worksheet[f'B{r}']
+                            cell.alignment = center_align
+                            cell.font = meta_font
+                    
                     last_row = worksheet.max_row
                     
-                    table_ref = f"A5:{get_column_letter(total_columns)}{last_row}"
+                    # 3. إنشاء جدول الإكسيل للبيانات
+                    table_ref = f"A6:{last_col_letter}{last_row}"
                     tab = Table(displayName=f"TableMap_{idx}", ref=table_ref)
                     style = TableStyleInfo(name="TableStyleMedium2", showFirstColumn=False, showLastColumn=False, showRowStripes=True, showColumnStripes=False)
                     tab.tableStyleInfo = style
                     worksheet.add_table(tab)
                     
-                    for r_idx in range(5, last_row + 1):
+                    # 4. تنسيق الخلايا 
+                    for r_idx in range(6, last_row + 1):
                         worksheet.row_dimensions[r_idx].height = 26.25 
                         
                         is_empty = False
-                        if r_idx > 5:
+                        if r_idx > 6:
                             if sheet_name == 'خريطة اللجان':
                                 is_empty = (worksheet.cell(row=r_idx, column=3).value == '-') 
                             else:
@@ -397,13 +410,13 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             cell = worksheet.cell(row=r_idx, column=c_idx)
                             cell.border = thin_border
                             
-                            if r_idx == 5:
+                            if r_idx == 6: # صف عناوين الجدول
                                 cell.font = header_font_white
                                 cell.alignment = center_align
                             else:
-                                cell.font = data_font 
+                                cell.font = data_font # خط عريض لكل البيانات
                                 
-                                if c_idx == 2: 
+                                if c_idx == 2: # مكان اللجنة
                                     cell.alignment = right_align
                                 else:
                                     cell.alignment = center_align
@@ -411,6 +424,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                                 if is_empty:
                                     cell.fill = empty_fill
                                 
+                    # 5. عرض الأعمدة
                     if sheet_name == 'خريطة اللجان':
                         worksheet.column_dimensions['A'].width = 15 
                         worksheet.column_dimensions['B'].width = 45 
@@ -425,44 +439,3 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         worksheet.column_dimensions['E'].width = 15 
                         worksheet.column_dimensions['F'].width = 40 
                         for i in range(7, total_columns + 1):
-                            worksheet.column_dimensions[get_column_letter(i)].width = 16
-                            
-                    worksheet.print_area = f"A1:{get_column_letter(total_columns)}{last_row}"
-                    worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
-                    
-                    if orientation == 'landscape':
-                        worksheet.page_setup.orientation = worksheet.ORIENTATION_LANDSCAPE
-                    else:
-                        worksheet.page_setup.orientation = worksheet.ORIENTATION_PORTRAIT
-                        
-                    worksheet.sheet_properties.pageSetUpPr.fitToPage = True
-                    worksheet.page_setup.fitToWidth = 1
-                    worksheet.page_setup.fitToHeight = 0
-                    worksheet.print_options.horizontalCentered = True
-                    worksheet.print_title_rows = '1:5'
-
-            st.markdown("<div style='display: flex; justify-content: flex-end; width: 100%; margin-top: 15px;'>", unsafe_allow_html=True)
-            
-            safe_exam = exam_period.replace(" ", "_")
-            safe_year = academic_year.replace(" ", "")
-            if level_courses.strip():
-                level_part = f"المستوي_{level_courses.strip()}"
-            else:
-                level_part = "غير_محدد"
-                
-            dynamic_file_name = f"خريطة_لجان_{level_part}_{safe_exam}_{safe_year}.xlsx"
-            
-            st.download_button(
-                label="📥 تحميل خريطة اللجان (ملف Excel بالشيتين)", 
-                data=output.getvalue(), 
-                file_name=dynamic_file_name, 
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
-                type="primary"
-            )
-            st.markdown("</div>", unsafe_allow_html=True)
-            
-    st.markdown("---")
-    if st.button("تفريغ البيانات لرفع ملفات جديدة"):
-        st.session_state.rooms_df = None
-        st.session_state.students_df = None
-        st.rerun()
