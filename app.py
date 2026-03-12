@@ -231,17 +231,14 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
             else:
                 st.success("✅ تم الانتهاء من التوزيع الموحد بنجاح!")
             
-            # === عرض الجدول معكوس للموقع (من اليمين لليسار) ===
             display_cols = final_df.columns.tolist()[::-1]
             df_display = final_df[display_cols]
             
             styled_df = df_display.style.set_properties(**{'text-align': 'right'}).set_table_styles([dict(selector='th', props=[('text-align', 'right')])])
             st.dataframe(styled_df, hide_index=True, use_container_width=True)
             
-            # --- ملف الإكسيل الاحترافي للطباعة A4 (الترتيب الأصلي) ---
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                # كتابة البيانات بداية من الصف 5 عشان نسيب مساحة لبيانات الخريطة
                 final_df.to_excel(writer, index=False, sheet_name='خريطة اللجان', startrow=4)
                 workbook = writer.book
                 worksheet = writer.sheets['خريطة اللجان']
@@ -254,7 +251,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 header_font = Font(color="FFFFFF", bold=True, size=11)
                 empty_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
                 
-                # إضافة بيانات الخريطة أعلى الإكسيل (الخطوة 2)
                 meta_data = [
                     ("أماكن امتحانات", exam_period),
                     ("العام الجامعي", academic_year),
@@ -272,7 +268,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
 
                 total_columns = len(final_df.columns)
                 
-                # تنسيق رأس الجدول الأساسي (يبدأ من الصف 5)
                 for col_num in range(1, total_columns + 1):
                     cell = worksheet.cell(row=5, column=col_num)
                     cell.fill = header_fill
@@ -280,9 +275,8 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     cell.alignment = center_align
                     cell.border = thin_border
                 
-                # تنسيق البيانات داخل الجدول
                 for r_idx in range(6, worksheet.max_row + 1):
-                    is_empty = (worksheet.cell(row=r_idx, column=4).value == '-') # عمود 'من'
+                    is_empty = (worksheet.cell(row=r_idx, column=4).value == '-') 
                     for c_idx in range(1, total_columns + 1):
                         cell = worksheet.cell(row=r_idx, column=c_idx)
                         cell.border = thin_border
@@ -310,13 +304,15 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
             
             st.markdown("<div style='display: flex; justify-content: flex-end; width: 100%; margin-top: 15px;'>", unsafe_allow_html=True)
             
-            # تسمية ديناميكية لملف الإكسيل
+            # === التعديل هنا: تسمية ديناميكية تشمل مقررات المستوى ===
             safe_exam = exam_period.replace(" ", "_")
             safe_year = academic_year.replace(" ", "")
+            safe_level = level_courses.strip() if level_courses.strip() else "بدون_مستوى"
+            
             st.download_button(
                 label="📥 تحميل خريطة اللجان الشاملة (Excel)", 
                 data=output.getvalue(), 
-                file_name=f"خريطة_اللجان_{safe_exam}_{safe_year}.xlsx", 
+                file_name=f"خريطة_لجان_{safe_level}_{safe_exam}_{safe_year}.xlsx", 
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
                 type="primary"
             )
