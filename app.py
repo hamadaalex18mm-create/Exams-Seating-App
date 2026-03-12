@@ -154,7 +154,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
     st.info(f"إجمالي عدد الطلبة (بدون تكرار) المطلوب توزيعهم: **{total_unique_students}** طالب.")
     
     if st.button("🚀 بدء التوزيع الذكي الموحد", type="primary"):
-        with st.spinner("جاري التوزيع وقراءة مستويات الطلبة وضم البواقي..."):
+        with st.spinner("جاري التوزيع وقراءة مستويات الطلبة وتلخيص الملاحظات..."):
             result_data = []
             curr_student_idx = 0
             
@@ -192,13 +192,9 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             can_add = False
                             break
                             
-                    # ==========================================
-                    # الحل السحري لضم البواقي (الطلاب المتبقيين أقل من 5)
-                    # ==========================================
                     remaining_total_students = total_unique_students - i
                     if not can_add and remaining_total_students < 5:
-                        can_add = True # تجاهل الكسر وكمل إضافة للجنة دي!
-                    # ==========================================
+                        can_add = True 
                     
                     if not can_add:
                         break 
@@ -245,11 +241,30 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     for lvl in seat_levels.get(current_seat, []):
                         room_levels.add(str(lvl))
                 
+                # ==========================================
+                # اللمسة الجديدة: تلخيص الملاحظات لو زادت عن 2
+                # ==========================================
                 if room_levels:
-                    formatted_levels = [format_level(l) for l in sorted(list(room_levels))]
-                    notes_text = " & ".join(formatted_levels)
+                    formatted_levels = list(set([format_level(l) for l in room_levels]))
+                    
+                    if len(formatted_levels) > 2:
+                        simplified_levels = set()
+                        for lvl in formatted_levels:
+                            words = lvl.split()
+                            # لو الجملة طويلة (فيها شعبة في النص)
+                            if len(words) > 3:
+                                # ناخد أول كلمتين (المستوي + الرقم) وآخر كلمة (انتظام/انتساب)
+                                simplified = f"{words[0]} {words[1]} {words[-1]}"
+                                simplified_levels.add(simplified)
+                            else:
+                                simplified_levels.add(lvl)
+                        
+                        notes_text = " & ".join(sorted(list(simplified_levels)))
+                    else:
+                        notes_text = " & ".join(sorted(formatted_levels))
                 else:
                     notes_text = ""
+                # ==========================================
                 
                 room_data = {
                     'رقم اللجنة': room_num,
