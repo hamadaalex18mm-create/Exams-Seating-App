@@ -30,6 +30,11 @@ st.markdown(
     [data-testid="stDataFrame"] div[role="columnheader"] {
         text-align: right !important; justify-content: flex-end !important; font-size: 15px !important;
     }
+    
+    /* ستايل التبويبات */
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; justify-content: flex-end; }
+    .stTabs [data-baseweb="tab"] { font-size: 18px; font-weight: bold; background-color: #f0f4f8; border-radius: 5px 5px 0 0; padding: 10px 20px; }
+    .stTabs [aria-selected="true"] { background-color: #1E3A8A !important; color: white !important; }
     </style>
     """,
     unsafe_allow_html=True
@@ -132,7 +137,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
     st.info(f"إجمالي عدد الطلبة (بدون تكرار) المطلوب توزيعهم: **{total_unique_students}** طالب.")
     
     if st.button("🚀 بدء التوزيع الذكي الموحد", type="primary"):
-        with st.spinner("جاري التوزيع وبناء جدول الإكسيل الاحترافي..."):
+        with st.spinner("جاري التوزيع وبناء جداول الإكسيل الاحترافية..."):
             result_data = []
             curr_student_idx = 0
             
@@ -224,26 +229,48 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 current_range_start = final_end + 1
                 curr_student_idx += best_c
             
+            # --- إنشاء الداتا فريم التفصيلي (الشيت الثاني) ---
             final_df = pd.DataFrame(result_data)
             
+            # --- إنشاء الداتا فريم الملخص (الشيت الأول) ---
+            summary_data = []
+            for row in result_data:
+                summary_data.append({
+                    'رقم اللجنة': row['رقم اللجنة'],
+                    'مكان اللجنة': row['مكان اللجنة'],
+                    'بداية اللجنة (من)': row['من'],
+                    'نهاية اللجنة (إلى)': row['إلى'],
+                    'ملاحظات': ''
+                })
+            summary_df = pd.DataFrame(summary_data)
+
             if curr_student_idx < total_unique_students:
                 st.error(f"⚠️ تحذير: إجمالي سعة اللجان لا تكفي! متبقي {total_unique_students - curr_student_idx} طالب بدون أماكن.")
             else:
-                st.success("✅ تم الانتهاء من التوزيع الموحد بنجاح!")
+                st.success("✅ تم الانتهاء من التوزيع وإنشاء الشيتين بنجاح!")
+
+            # --- عرض التبويبات على الموقع ---
+            tab1, tab2 = st.tabs(["📄 خريطة اللجان (ملخص)", "📊 الخريطة التفصيلية (بالمواد)"])
             
-            display_cols = final_df.columns.tolist()[::-1]
-            df_display = final_df[display_cols]
+            with tab1:
+                display_summary_cols = summary_df.columns.tolist()[::-1]
+                styled_summary = summary_df[display_summary_cols].style.set_properties(**{'text-align': 'right'}).set_table_styles([dict(selector='th', props=[('text-align', 'right')])])
+                st.dataframe(styled_summary, hide_index=True, use_container_width=True)
+                
+            with tab2:
+                display_final_cols = final_df.columns.tolist()[::-1]
+                styled_final = final_df[display_final_cols].style.set_properties(**{'text-align': 'right'}).set_table_styles([dict(selector='th', props=[('text-align', 'right')])])
+                st.dataframe(styled_final, hide_index=True, use_container_width=True)
             
-            styled_df = df_display.style.set_properties(**{'text-align': 'right'}).set_table_styles([dict(selector='th', props=[('text-align', 'right')])])
-            st.dataframe(styled_df, hide_index=True, use_container_width=True)
-            
-            # --- ملف الإكسيل كـ "جدول إكسيل رسمي - Table" ---
+            # --- توليد ملف الإكسيل ذو الشيتين ---
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                final_df.to_excel(writer, index=False, sheet_name='خريطة اللجان', startrow=4)
-                workbook = writer.book
-                worksheet = writer.sheets['خريطة اللجان']
-                worksheet.sheet_view.rightToLeft = True 
+                
+                # إعداد قائمة بالشيتات عشان نطبق نفس التنسيق بشكل أنيق
+                sheets_info = [
+                    {'df': summary_df, 'name': 'خريطة اللجان', 'orientation': 'portrait'},
+                    {'df': final_df, 'name': 'الخريطة التفصيلية', 'orientation': 'landscape'}
+                ]
                 
                 from openpyxl.styles import Alignment, Border, Side, Font, PatternFill
                 from openpyxl.worksheet.table import Table, TableStyleInfo
@@ -259,67 +286,88 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     ("العام الجامعي", academic_year),
                     ("مقررات المستوي", level_courses)
                 ]
-                for i, (label, val) in enumerate(meta_data, start=1):
-                    worksheet[f'A{i}'] = label
-                    worksheet[f'B{i}'] = val
-                    worksheet[f'A{i}'].border = thin_border
-                    worksheet[f'B{i}'].border = thin_border
-                    worksheet[f'A{i}'].alignment = center_align
-                    worksheet[f'B{i}'].alignment = center_align
-                    worksheet[f'A{i}'].font = Font(bold=True)
-                    worksheet[f'B{i}'].font = Font(bold=True)
-
-                total_columns = len(final_df.columns)
-                last_row = worksheet.max_row
                 
-                table_ref = f"A5:{get_column_letter(total_columns)}{last_row}"
-                tab = Table(displayName="MapTable", ref=table_ref)
-                
-                style = TableStyleInfo(name="TableStyleMedium2", showFirstColumn=False,
-                                       showLastColumn=False, showRowStripes=True, showColumnStripes=False)
-                tab.tableStyleInfo = style
-                worksheet.add_table(tab)
-                
-                for r_idx in range(5, last_row + 1):
-                    is_empty = False
-                    if r_idx > 5:
-                        is_empty = (worksheet.cell(row=r_idx, column=4).value == '-') 
-                        
-                    for c_idx in range(1, total_columns + 1):
-                        cell = worksheet.cell(row=r_idx, column=c_idx)
-                        cell.border = thin_border
-                        cell.alignment = center_align
-                        
-                        if r_idx == 5:
-                            cell.font = header_font_white
-                        elif is_empty:
-                            cell.fill = empty_fill
+                for idx, info in enumerate(sheets_info):
+                    current_df = info['df']
+                    sheet_name = info['name']
+                    orientation = info['orientation']
+                    
+                    # حفظ البيانات بدءاً من الصف الخامس
+                    current_df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=4)
+                    worksheet = writer.sheets[sheet_name]
+                    worksheet.sheet_view.rightToLeft = True 
+                    
+                    # 1. إضافة بيانات الخريطة (الترويسة)
+                    for i, (label, val) in enumerate(meta_data, start=1):
+                        worksheet[f'A{i}'] = label
+                        worksheet[f'B{i}'] = val
+                        worksheet[f'A{i}'].border = thin_border
+                        worksheet[f'B{i}'].border = thin_border
+                        worksheet[f'A{i}'].alignment = center_align
+                        worksheet[f'B{i}'].alignment = center_align
+                        worksheet[f'A{i}'].font = Font(bold=True)
+                        worksheet[f'B{i}'].font = Font(bold=True)
+                    
+                    total_columns = len(current_df.columns)
+                    last_row = worksheet.max_row
+                    
+                    # 2. إنشاء جدول الإكسيل (Table)
+                    table_ref = f"A5:{get_column_letter(total_columns)}{last_row}"
+                    tab = Table(displayName=f"TableMap_{idx}", ref=table_ref)
+                    style = TableStyleInfo(name="TableStyleMedium2", showFirstColumn=False, showLastColumn=False, showRowStripes=True, showColumnStripes=False)
+                    tab.tableStyleInfo = style
+                    worksheet.add_table(tab)
+                    
+                    # 3. تنسيق الخلايا (اللون الأبيض للرأس، وتظليل اللجان الفارغة)
+                    for r_idx in range(5, last_row + 1):
+                        is_empty = False
+                        if r_idx > 5:
+                            if sheet_name == 'خريطة اللجان':
+                                is_empty = (worksheet.cell(row=r_idx, column=3).value == '-') # عمود 'من' في الملخص هو رقم 3
+                            else:
+                                is_empty = (worksheet.cell(row=r_idx, column=4).value == '-') # عمود 'من' في التفصيلي هو رقم 4
+                                
+                        for c_idx in range(1, total_columns + 1):
+                            cell = worksheet.cell(row=r_idx, column=c_idx)
+                            cell.border = thin_border
+                            cell.alignment = center_align
                             
-                worksheet.column_dimensions['A'].width = 12 
-                worksheet.column_dimensions['B'].width = 35 
-                worksheet.column_dimensions['C'].width = 12 
-                worksheet.column_dimensions['D'].width = 15 
-                worksheet.column_dimensions['E'].width = 15 
-                
-                for i in range(6, total_columns + 1):
-                    col_letter = get_column_letter(i)
-                    worksheet.column_dimensions[col_letter].width = 16
-                
-                # ==========================================
-                # إعدادات الطباعة المتقدمة
-                # ==========================================
-                worksheet.print_area = f"A1:{get_column_letter(total_columns)}{last_row}"
-                worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
-                worksheet.page_setup.orientation = worksheet.ORIENTATION_LANDSCAPE # الطباعة بالعرض (أفقي)
-                worksheet.sheet_properties.pageSetUpPr.fitToPage = True
-                worksheet.page_setup.fitToWidth = 1 # كل الأعمدة في صفحة واحدة بالعرض
-                worksheet.page_setup.fitToHeight = 0 # السماح بصفحات متعددة بالطول
-                worksheet.print_options.horizontalCentered = True
-                
-                # تكرار أول 5 صفوف (البيانات الأساسية ورؤوس الجدول) في أعلى كل صفحة مطبوعة
-                worksheet.print_title_rows = '1:5'
-                # ==========================================
-            
+                            if r_idx == 5:
+                                cell.font = header_font_white
+                            elif is_empty:
+                                cell.fill = empty_fill
+                                
+                    # 4. تظبيط عرض الأعمدة
+                    if sheet_name == 'خريطة اللجان':
+                        worksheet.column_dimensions['A'].width = 12 
+                        worksheet.column_dimensions['B'].width = 45 
+                        worksheet.column_dimensions['C'].width = 20 
+                        worksheet.column_dimensions['D'].width = 20 
+                        worksheet.column_dimensions['E'].width = 35 
+                    else:
+                        worksheet.column_dimensions['A'].width = 12 
+                        worksheet.column_dimensions['B'].width = 35 
+                        worksheet.column_dimensions['C'].width = 12 
+                        worksheet.column_dimensions['D'].width = 15 
+                        worksheet.column_dimensions['E'].width = 15 
+                        for i in range(6, total_columns + 1):
+                            worksheet.column_dimensions[get_column_letter(i)].width = 16
+                            
+                    # 5. إعدادات الطباعة
+                    worksheet.print_area = f"A1:{get_column_letter(total_columns)}{last_row}"
+                    worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
+                    
+                    if orientation == 'landscape':
+                        worksheet.page_setup.orientation = worksheet.ORIENTATION_LANDSCAPE
+                    else:
+                        worksheet.page_setup.orientation = worksheet.ORIENTATION_PORTRAIT
+                        
+                    worksheet.sheet_properties.pageSetUpPr.fitToPage = True
+                    worksheet.page_setup.fitToWidth = 1
+                    worksheet.page_setup.fitToHeight = 0
+                    worksheet.print_options.horizontalCentered = True
+                    worksheet.print_title_rows = '1:5'
+
             st.markdown("<div style='display: flex; justify-content: flex-end; width: 100%; margin-top: 15px;'>", unsafe_allow_html=True)
             
             safe_exam = exam_period.replace(" ", "_")
@@ -332,7 +380,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
             dynamic_file_name = f"خريطة_لجان_{level_part}_{safe_exam}_{safe_year}.xlsx"
             
             st.download_button(
-                label="📥 تحميل خريطة اللجان الشاملة (Excel)", 
+                label="📥 تحميل خريطة اللجان (ملف Excel بالشيتين)", 
                 data=output.getvalue(), 
                 file_name=dynamic_file_name, 
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
