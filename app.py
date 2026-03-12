@@ -8,7 +8,7 @@ import math
 st.set_page_config(page_title="توزيع أماكن الامتحانات", layout="wide")
 
 # ==========================================
-# دالة ذكية لتحويل أرقام المستويات لنصوص
+# دالة ذكية لتحويل أرقام المستويات لنصوص (بدون تكرار كلمة المستوي)
 # ==========================================
 def format_level(val):
     s = str(val).strip()
@@ -21,7 +21,7 @@ def format_level(val):
         elif parts[0] == '3': parts[0] = 'الثالث'
         elif parts[0] == '4': parts[0] = 'الرابع'
         
-    return "المستوي " + " ".join(parts)
+    return " ".join(parts) # بنرجع الرقم والشعبة بس من غير كلمة المستوي
 
 # ==========================================
 # ستايل الواجهة الأساسي
@@ -242,26 +242,34 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         room_levels.add(str(lvl))
                 
                 # ==========================================
-                # اللمسة الجديدة: تلخيص الملاحظات لو زادت عن 2
+                # اللمسة الجديدة: إضافة "المستوي" مرة واحدة في البداية
                 # ==========================================
                 if room_levels:
-                    formatted_levels = list(set([format_level(l) for l in room_levels]))
+                    # نرتب المستويات وهي أرقام الأول عشان الترتيب يطلع صح (1, 2, 3) مش أبجدي
+                    sorted_raw_levels = sorted(list(room_levels))
+                    
+                    formatted_levels = []
+                    for l in sorted_raw_levels:
+                        f_lvl = format_level(l)
+                        if f_lvl not in formatted_levels:
+                            formatted_levels.append(f_lvl)
                     
                     if len(formatted_levels) > 2:
-                        simplified_levels = set()
+                        simplified_levels = []
                         for lvl in formatted_levels:
                             words = lvl.split()
-                            # لو الجملة طويلة (فيها شعبة في النص)
-                            if len(words) > 3:
-                                # ناخد أول كلمتين (المستوي + الرقم) وآخر كلمة (انتظام/انتساب)
-                                simplified = f"{words[0]} {words[1]} {words[-1]}"
-                                simplified_levels.add(simplified)
+                            # لو الجملة فيها شعبة (زي: الثالث ادارة انتظام)
+                            if len(words) >= 3:
+                                simplified = f"{words[0]} {words[-1]}" # الأول + انتظام
+                                if simplified not in simplified_levels:
+                                    simplified_levels.append(simplified)
                             else:
-                                simplified_levels.add(lvl)
+                                if lvl not in simplified_levels:
+                                    simplified_levels.append(lvl)
                         
-                        notes_text = " & ".join(sorted(list(simplified_levels)))
+                        notes_text = "المستوي " + " & ".join(simplified_levels)
                     else:
-                        notes_text = " & ".join(sorted(formatted_levels))
+                        notes_text = "المستوي " + " & ".join(formatted_levels)
                 else:
                     notes_text = ""
                 # ==========================================
