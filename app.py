@@ -309,7 +309,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 styled_final = final_df[display_final_cols].style.set_properties(**{'text-align': 'right'}).set_table_styles([dict(selector='th', props=[('text-align', 'right')])])
                 st.dataframe(styled_final, hide_index=True, use_container_width=True)
             
-            # --- توليد ملف الإكسيل الاحترافي باللوجوهات والفوتر ---
+            # --- توليد ملف الإكسيل الاحترافي ---
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 
@@ -330,8 +330,11 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 empty_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
                 header_font_white = Font(color="FFFFFF", bold=True, size=12)
                 
+                # جعلنا الفونت الأساسي للبيانات Bold
                 data_font = Font(bold=True, size=12) 
-                meta_font = Font(bold=True, size=14, color="1E3A8A") 
+                
+                # فونت الترويسة
+                meta_font = Font(bold=True, size=16, color="1E3A8A") 
                 
                 fac_logo = "logo_faculty.png" if os.path.exists("logo_faculty.png") else "logo_faculty.jpg" if os.path.exists("logo_faculty.jpg") else None
                 unit_logo = "logo_unit.png" if os.path.exists("logo_unit.png") else "logo_unit.jpg" if os.path.exists("logo_unit.jpg") else None
@@ -348,46 +351,46 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     worksheet = writer.sheets[sheet_name]
                     worksheet.sheet_view.rightToLeft = True 
                     
+                    # 1. إدراج الشعارات بأحجام كبيرة (150 بكسل)
                     try:
                         if fac_logo:
                             img1 = xlImage(fac_logo)
-                            img1.width, img1.height = 90, 90
+                            img1.width, img1.height = 150, 150
                             worksheet.add_image(img1, 'A1') 
                         if unit_logo:
                             img2 = xlImage(unit_logo)
-                            img2.width, img2.height = 90, 90
+                            img2.width, img2.height = 150, 150
                             worksheet.add_image(img2, f'{last_col_letter}1') 
                     except Exception:
                         pass
                     
-                    if total_columns > 2:
-                        merge_end = get_column_letter(total_columns - 1)
-                    else:
-                        merge_end = 'A'
-                        
-                    worksheet.merge_cells(f'B1:{merge_end}1')
-                    worksheet.merge_cells(f'B2:{merge_end}2')
-                    worksheet.merge_cells(f'B3:{merge_end}3')
+                    # 2. تصميم الترويسة الاحترافية (دمج كل الأعمدة للتوسيط الدقيق)
+                    worksheet.merge_cells(f'A1:{last_col_letter}1')
+                    worksheet.merge_cells(f'A2:{last_col_letter}2')
+                    worksheet.merge_cells(f'A3:{last_col_letter}3')
                     
-                    worksheet['B1'] = f"أماكن امتحانات: {exam_period}"
-                    worksheet['B2'] = f"العام الجامعي: {academic_year}"
-                    worksheet['B3'] = f"مقررات المستوي: {level_courses}"
+                    worksheet['A1'] = f"أماكن امتحانات: {exam_period}"
+                    worksheet['A2'] = f"العام الجامعي: {academic_year}"
+                    worksheet['A3'] = f"مقررات المستوي: {level_courses}"
                     
                     for r in range(1, 6):
-                        worksheet.row_dimensions[r].height = 26.25 
+                        # ارتفاع الصفوف العلوية عشان الشعار ياخد راحته
+                        worksheet.row_dimensions[r].height = 35 
                         if r <= 3:
-                            cell = worksheet[f'B{r}']
+                            cell = worksheet[f'A{r}']
                             cell.alignment = center_align
                             cell.font = meta_font
                     
                     last_row = worksheet.max_row
                     
+                    # 3. إنشاء جدول الإكسيل للبيانات
                     table_ref = f"A6:{last_col_letter}{last_row}"
                     tab = Table(displayName=f"TableMap_{idx}", ref=table_ref)
                     style = TableStyleInfo(name="TableStyleMedium2", showFirstColumn=False, showLastColumn=False, showRowStripes=True, showColumnStripes=False)
                     tab.tableStyleInfo = style
                     worksheet.add_table(tab)
                     
+                    # 4. تنسيق الخلايا 
                     for r_idx in range(6, last_row + 1):
                         worksheet.row_dimensions[r_idx].height = 26.25 
                         
@@ -402,13 +405,13 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             cell = worksheet.cell(row=r_idx, column=c_idx)
                             cell.border = thin_border
                             
-                            if r_idx == 6: 
+                            if r_idx == 6: # صف عناوين الجدول
                                 cell.font = header_font_white
                                 cell.alignment = center_align
                             else:
-                                cell.font = data_font 
+                                cell.font = data_font # خط عريض لكل البيانات
                                 
-                                if c_idx == 2: 
+                                if c_idx == 2: # مكان اللجنة
                                     cell.alignment = right_align
                                 else:
                                     cell.alignment = center_align
@@ -416,6 +419,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                                 if is_empty:
                                     cell.fill = empty_fill
                                 
+                    # 5. عرض الأعمدة
                     if sheet_name == 'خريطة اللجان':
                         worksheet.column_dimensions['A'].width = 15 
                         worksheet.column_dimensions['B'].width = 45 
@@ -432,6 +436,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         for i in range(7, total_columns + 1):
                             worksheet.column_dimensions[get_column_letter(i)].width = 16
                             
+                    # 6. إعدادات الطباعة والترقيم (Footer & Print Titles)
                     worksheet.print_area = f"A1:{last_col_letter}{last_row}"
                     worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
                     
@@ -445,8 +450,10 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     worksheet.page_setup.fitToHeight = 0
                     worksheet.print_options.horizontalCentered = True
                     
+                    # تثبيت الرأس والشعارات وعنوان الجدول (أول 6 صفوف)
                     worksheet.print_title_rows = '1:6'
                     
+                    # إضافة ترقيم الصفحات في الأسفل بين الأقواس زي ما طلبت
                     worksheet.oddFooter.center.text = "&12 صفحة رقم (&P) من (&N)"
                     worksheet.evenFooter.center.text = "&12 صفحة رقم (&P) من (&N)"
 
