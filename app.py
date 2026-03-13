@@ -95,7 +95,8 @@ if st.session_state.rooms_df is None or st.session_state.students_df is None:
                 st.error(f"حدث خطأ أثناء قراءة ملف اللجان: {e}")
 
     with col2: 
-        st.markdown("**2. ملف الطلبة المسجلين (يحتوي على شيتات المقررات)**")
+        # تحديث النص ليوضح المرونة في الرفع
+        st.markdown("**2. ملف الطلبة (شيت واحد مجمع أو عدة شيتات)**")
         students_file = st.file_uploader("ارفع ملف الطلبة بصيغة Excel", type=['xlsx'], key="students_uploader")
         if students_file:
             try:
@@ -103,13 +104,23 @@ if st.session_state.rooms_df is None or st.session_state.students_df is None:
                 all_students = []
                 for sheet_name, df in all_sheets.items():
                     df.columns = df.columns.str.strip()
-                    if "المستوى" in df.columns: df.rename(columns={"المستوى": "المستوي"}, inplace=True)
+                    
+                    # مرونة في قراءة أسماء الأعمدة لتفادي أخطاء الإدخال
+                    col_mapping = {
+                        "المستوى": "المستوي",
+                        "المقرر": "اسم المقرر",
+                        "اسم المادة": "اسم المقرر",
+                        "الماده": "اسم المقرر",
+                        "رقم جلوس": "رقم الجلوس"
+                    }
+                    df.rename(columns=col_mapping, inplace=True)
+                    
                     required_students = ["رقم الجلوس", "اسم المقرر", "المستوي"]
                     
                     if all(col in df.columns for col in required_students):
                         all_students.append(df[required_students])
                     else:
-                        st.warning(f"⚠️ الشيت '{sheet_name}' تم تجاهله لعدم وجود الأعمدة المطلوبة.")
+                        st.warning(f"⚠️ الشيت '{sheet_name}' تم تجاهله لعدم وجود الأعمدة المطلوبة: (رقم الجلوس، المقرر، المستوي).")
                 
                 if all_students:
                     df_all = pd.concat(all_students, ignore_index=True)
@@ -117,7 +128,7 @@ if st.session_state.rooms_df is None or st.session_state.students_df is None:
                     df_all.dropna(subset=['رقم الجلوس'], inplace=True)
                     df_all['رقم الجلوس'] = df_all['رقم الجلوس'].astype(int)
                     st.session_state.students_df = df_all
-                    st.success(f"✅ تم دمج بيانات الطلبة بنجاح! (إجمالي السجلات: {len(df_all)})")
+                    st.success(f"✅ تم دمج وقراءة بيانات الطلبة بنجاح! (إجمالي السجلات: {len(df_all)})")
                     st.rerun()
                 else:
                     st.error("❌ لم يتم العثور على الأعمدة المطلوبة في أي شيت.")
@@ -347,8 +358,8 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     worksheet = writer.sheets[sheet_name]
                     worksheet.sheet_view.rightToLeft = True 
                     
-                    # 1. إدراج الشعارات وتظبيط المحاذاة الدقيقة بالبكسل
-                    target_h = 100 # حجم موحد وثابت للشعارين بدون أي ضغط أو مط
+                    # إدراج الشعارات (الحفاظ على النسب الطبيعية)
+                    target_h = 100 
                     try:
                         from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, AnchorMarker
                         from openpyxl.drawing.xdr import XDRPositiveSize2D
@@ -360,7 +371,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             img1.width = int(img1.width * ratio1)
                             img1.height = int(target_h)
                             
-                            # تثبيت شعار الكلية أقصى اليمين (العمود الأول) مع مسافة 10 بكسل
                             size1 = XDRPositiveSize2D(cx=pixels_to_EMU(img1.width), cy=pixels_to_EMU(img1.height))
                             marker1 = AnchorMarker(col=0, colOff=pixels_to_EMU(10), row=0, rowOff=pixels_to_EMU(5))
                             img1.anchor = OneCellAnchor(_from=marker1, ext=size1)
@@ -372,11 +382,10 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             img2.width = int(img2.width * ratio2)
                             img2.height = int(target_h)
                             
-                            # تثبيت شعار الوحدة أقصى الشمال بالمللي
                             col_idx = total_columns - 1
                             col_w = 45 if sheet_name == 'خريطة اللجان' else 40
-                            col_w_px = col_w * 7.5 # تحويل عرض العمود لبيكسلات
-                            offset_px = int(col_w_px - img2.width - 10) # زقه لآخر الشمال
+                            col_w_px = col_w * 7.5 
+                            offset_px = int(col_w_px - img2.width - 10) 
                             if offset_px < 0: offset_px = 0
                             
                             size2 = XDRPositiveSize2D(cx=pixels_to_EMU(img2.width), cy=pixels_to_EMU(img2.height))
@@ -385,7 +394,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             worksheet.add_image(img2)
                             
                     except Exception:
-                        # بديل في حالة تعذر تحميل المكتبات الهندسية
                         if fac_logo:
                             img1 = xlImage(fac_logo)
                             ratio1 = target_h / img1.height
@@ -397,32 +405,40 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             img2.width, img2.height = int(img2.width * ratio2), int(target_h)
                             worksheet.add_image(img2, f'{last_col_letter}1')
                     
-                    # 2. تصميم الترويسة (الدمج الكلي للتوسيط الدقيق بدون حدود)
-                    worksheet.merge_cells(f'A1:{last_col_letter}1')
-                    worksheet.merge_cells(f'A2:{last_col_letter}2')
-                    worksheet.merge_cells(f'A3:{last_col_letter}3')
-                    
-                    worksheet['A1'] = f"أماكن امتحانات: {exam_period}"
-                    worksheet['A2'] = f"العام الجامعي: {academic_year}"
-                    worksheet['A3'] = f"مقررات المستوي: {level_courses}"
+                    # تصميم الترويسة 
+                    if total_columns > 2:
+                        merge_start = 'B'
+                        merge_end = get_column_letter(total_columns - 1)
+                    else:
+                        merge_start = 'A'
+                        merge_end = 'A'
+                        
+                    if merge_start != merge_end:
+                        worksheet.merge_cells(f'{merge_start}1:{merge_end}1')
+                        worksheet.merge_cells(f'{merge_start}2:{merge_end}2')
+                        worksheet.merge_cells(f'{merge_start}3:{merge_end}3')
+                        
+                    worksheet[f'{merge_start}1'] = f"أماكن امتحانات: {exam_period}"
+                    worksheet[f'{merge_start}2'] = f"العام الجامعي: {academic_year}"
+                    worksheet[f'{merge_start}3'] = f"مقررات المستوي: {level_courses}"
                     
                     for r in range(1, 6):
                         worksheet.row_dimensions[r].height = 35 
                         if r <= 3:
-                            cell = worksheet[f'A{r}']
+                            cell = worksheet[f'{merge_start}{r}']
                             cell.alignment = center_align
                             cell.font = meta_font
                     
                     last_row = worksheet.max_row
                     
-                    # 3. إنشاء جدول الإكسيل للبيانات
+                    # إنشاء جدول الإكسيل للبيانات
                     table_ref = f"A6:{last_col_letter}{last_row}"
                     tab = Table(displayName=f"TableMap_{idx}", ref=table_ref)
                     style = TableStyleInfo(name="TableStyleMedium2", showFirstColumn=False, showLastColumn=False, showRowStripes=True, showColumnStripes=False)
                     tab.tableStyleInfo = style
                     worksheet.add_table(tab)
                     
-                    # 4. تنسيق الخلايا 
+                    # تنسيق الخلايا 
                     for r_idx in range(6, last_row + 1):
                         worksheet.row_dimensions[r_idx].height = 26.25 
                         
@@ -451,7 +467,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                                 if is_empty:
                                     cell.fill = empty_fill
                                 
-                    # 5. عرض الأعمدة
+                    # عرض الأعمدة
                     if sheet_name == 'خريطة اللجان':
                         worksheet.column_dimensions['A'].width = 15 
                         worksheet.column_dimensions['B'].width = 45 
@@ -468,7 +484,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         for i in range(7, total_columns + 1):
                             worksheet.column_dimensions[get_column_letter(i)].width = 16
                             
-                    # 6. إعدادات الطباعة والترقيم
+                    # إعدادات الطباعة والترقيم
                     worksheet.print_area = f"A1:{last_col_letter}{last_row}"
                     worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
                     
