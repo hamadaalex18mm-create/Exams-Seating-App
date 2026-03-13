@@ -8,7 +8,7 @@ import math
 st.set_page_config(page_title="توزيع أماكن الامتحانات", layout="wide")
 
 # ==========================================
-# محرك الذكاء اللغوي (الإصدار الاحترافي لتفكيك ودمج الملاحظات)
+# محرك الذكاء اللغوي (الإصدار النهائي لتفكيك ودمج الملاحظات)
 # ==========================================
 def parse_level_string(raw_str):
     s = str(raw_str).replace("المستوي", "").replace("المستوى", "").strip()
@@ -25,7 +25,7 @@ def parse_level_string(raw_str):
             s = " ".join(words)
             break
             
-    # 2. استخراج الشعبة (تم إضافة "موارد")
+    # 2. استخراج الشعبة
     mjr = ""
     majors = ["إدارة الأعمال", "ادارة الاعمال", "إداره الاعمال", "اداره الاعمال", 
               "الموارد البشرية", "موارد بشرية", "الموارد البشریة", "موارد بشریة", "موارد",
@@ -33,7 +33,7 @@ def parse_level_string(raw_str):
               "الإدارة", "الادارة", "إدارة", "ادارة", "إداره", "اداره", 
               "الإحصاء", "الاحصاء", "إحصاء", "احصاء", "التمويل", "تمويل", 
               "الجمارك", "جمارك", "التسويق", "تسويق", "النظم", "نظم"]
-    majors.sort(key=len, reverse=True) # الترتيب من الأطول للأقصر لضمان الدقة
+    majors.sort(key=len, reverse=True) 
     for m in majors:
         if m in s:
             mjr = m
@@ -58,7 +58,6 @@ def generate_smart_notes(raw_levels_set):
 
     grouped_data = {}
     
-    # تفكيك وتجميع البيانات
     for raw in raw_levels_set:
         lvl, mjr, typ, mod = parse_level_string(raw)
         key = (lvl, typ)
@@ -79,13 +78,13 @@ def generate_smart_notes(raw_levels_set):
     for lvl, typ in sorted_keys:
         majors_dict = grouped_data[(lvl, typ)]
         
+        # دالة الدمج تم إصلاحها لطباعة "عادي وموجه" بشكل سليم
         def sort_mods(mods_set):
-            m_list = [m for m in mods_set if m]
-            m_list.sort() # ترتيب أبجدي (عادي قبل موجه)
-            return " وموجه" if "عادي وموجه" in " و".join(m_list) else " و".join(m_list)
+            m_list = [m for m in set(mods_set) if m]
+            m_list.sort() 
+            return " و".join(m_list)
 
         if len(majors_dict) == 1:
-            # لو شعبة واحدة للمستوى ده -> نحتفظ بالشعبة وندمج (عادي/موجه) لو وجد
             mjr = list(majors_dict.keys())[0]
             mods = majors_dict[mjr]
             mods_str = sort_mods(mods)
@@ -93,7 +92,6 @@ def generate_smart_notes(raw_levels_set):
             parts = [p for p in [lvl, mjr, typ, mods_str] if p]
             results.append(" ".join(parts))
         else:
-            # لو أكتر من شعبة -> نحذف الشعبة، وندمج كل (عادي/موجه)
             all_mods = set()
             for m_mods in majors_dict.values():
                 all_mods.update(m_mods)
@@ -350,7 +348,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     for lvl in seat_levels.get(current_seat, []):
                         room_levels.add(str(lvl))
                 
-                # استخدام المحرك الذكي الجديد للملاحظات
                 notes_text = generate_smart_notes(room_levels)
                 
                 room_data = {
@@ -563,7 +560,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         worksheet.column_dimensions['B'].width = 45 
                         worksheet.column_dimensions['C'].width = 20 
                         worksheet.column_dimensions['D'].width = 20 
-                        worksheet.column_dimensions['E'].width = 45 
+                        worksheet.column_dimensions['E'].width = 50 
                     else:
                         worksheet.column_dimensions['A'].width = 15 
                         worksheet.column_dimensions['B'].width = 35 
