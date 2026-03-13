@@ -265,7 +265,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
         st.success("✅ تم تفعيل ترتيب المقررات المخصص من الملف المرفق.")
     
     if st.button("🚀 بدء التوزيع وتوليد الوثائق الرسمية", type="primary"):
-        with st.spinner("جاري التوزيع وتطبيق معالجة الملاحظات الدقيقة..."):
+        with st.spinner("جاري التوزيع وتطبيق معالجة الملاحظات الدقيقة (سعة صارمة بدون +1)..."):
             result_data = []
             curr_student_idx = 0
             
@@ -291,6 +291,9 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     result_data.append(empty_room)
                     continue
                 
+                # ==========================================
+                # التعديل الجديد: السعة صارمة (مفيش +1)
+                # ==========================================
                 course_counts = {}
                 max_possible_c = 0
                 for i in range(curr_student_idx, total_unique_students):
@@ -299,10 +302,11 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     
                     can_add = True
                     for c in courses_for_seat:
-                        if course_counts.get(c, 0) + 1 > room_cap + 1:
+                        if course_counts.get(c, 0) + 1 > room_cap: # السعة صارمة هنا
                             can_add = False
                             break
                             
+                    # جبر النهايات: لو الكشف كله فاضل فيه 4 أو أقل، نضمهم عافية
                     remaining_total_students = total_unique_students - i
                     if not can_add and remaining_total_students <= 4:
                         can_add = True 
@@ -330,6 +334,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                                 temp_counts[c] = temp_counts.get(c, 0) + 1
                         current_max_load = max(temp_counts.values()) if temp_counts else 0
                         
+                        # السماحية التنازلية (-3) عشان نقفل برقم شيك
                         if current_max_load < room_cap - 3:
                             break
                             
@@ -481,8 +486,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             img2.height = int(target_h)
                             
                             col_idx = total_columns - 1
-                            
-                            # حساب دقيق لعرض العمود الأخير لضبط الشعار
                             if sheet_name == 'خريطة اللجان':
                                 col_w = 50
                             else:
