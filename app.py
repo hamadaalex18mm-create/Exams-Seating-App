@@ -495,4 +495,150 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             size2 = XDRPositiveSize2D(cx=pixels_to_EMU(img2.width), cy=pixels_to_EMU(img2.height))
                             marker2 = AnchorMarker(col=col_idx, colOff=pixels_to_EMU(offset_px), row=0, rowOff=pixels_to_EMU(5))
                             img2.anchor = OneCellAnchor(_from=marker2, ext=size2)
-                            worksheet.add_
+                            worksheet.add_image(img2)
+                            
+                    except Exception:
+                        if fac_logo:
+                            img1 = xlImage(fac_logo)
+                            ratio1 = target_h / img1.height
+                            img1.width, img1.height = int(img1.width * ratio1), int(target_h)
+                            worksheet.add_image(img1, 'A1')
+                        if unit_logo:
+                            img2 = xlImage(unit_logo)
+                            ratio2 = target_h / img2.height
+                            img2.width, img2.height = int(img2.width * ratio2), int(target_h)
+                            worksheet.add_image(img2, f'{last_col_letter}1')
+                    
+                    if total_columns > 2:
+                        merge_start = 'B'
+                        merge_end = get_column_letter(total_columns - 1)
+                    else:
+                        merge_start = 'A'
+                        merge_end = 'A'
+                        
+                    if merge_start != merge_end:
+                        worksheet.merge_cells(f'{merge_start}1:{merge_end}1')
+                        worksheet.merge_cells(f'{merge_start}2:{merge_end}2')
+                        worksheet.merge_cells(f'{merge_start}3:{merge_end}3')
+                        
+                    worksheet[f'{merge_start}1'] = f"أماكن امتحانات: {exam_period}"
+                    worksheet[f'{merge_start}2'] = f"العام الجامعي: {academic_year}"
+                    worksheet[f'{merge_start}3'] = f"مقررات المستوي: {level_courses}"
+                    
+                    for r in range(1, 6):
+                        worksheet.row_dimensions[r].height = 35 
+                        if r <= 3:
+                            cell = worksheet[f'{merge_start}{r}']
+                            cell.alignment = center_align
+                            cell.font = meta_font
+                    
+                    last_row = worksheet.max_row
+                    
+                    table_ref = f"A6:{last_col_letter}{last_row}"
+                    tab = Table(displayName=f"TableMap_{idx}", ref=table_ref)
+                    style = TableStyleInfo(name="TableStyleMedium2", showFirstColumn=False, showLastColumn=False, showRowStripes=True, showColumnStripes=False)
+                    tab.tableStyleInfo = style
+                    worksheet.add_table(tab)
+                    
+                    for r_idx in range(6, last_row + 1):
+                        worksheet.row_dimensions[r_idx].height = 26.25 
+                        
+                        is_empty = False
+                        capacity_val = 0
+                        
+                        if r_idx > 6:
+                            if sheet_name == 'خريطة اللجان':
+                                is_empty = (worksheet.cell(row=r_idx, column=3).value == '-') 
+                            else:
+                                is_empty = (worksheet.cell(row=r_idx, column=4).value == '-') 
+                                try:
+                                    capacity_val = int(worksheet.cell(row=r_idx, column=3).value)
+                                except:
+                                    capacity_val = 0
+                                
+                        for c_idx in range(1, total_columns + 1):
+                            cell = worksheet.cell(row=r_idx, column=c_idx)
+                            cell.border = thin_border
+                            
+                            if r_idx == 6: 
+                                cell.font = header_font_white
+                                cell.alignment = center_align
+                            else:
+                                cell.font = data_font 
+                                
+                                if c_idx == 2: 
+                                    cell.alignment = right_align
+                                else:
+                                    cell.alignment = center_align
+                                    
+                                if is_empty:
+                                    cell.fill = empty_fill
+                                else:
+                                    if sheet_name == 'الخريطة التفصيلية' and c_idx > 6:
+                                        try:
+                                            subject_count = int(cell.value)
+                                            if subject_count > capacity_val:
+                                                cell.fill = yellow_fill
+                                                cell.font = red_bold_font
+                                        except:
+                                            pass
+                                
+                    if sheet_name == 'خريطة اللجان':
+                        worksheet.column_dimensions['A'].width = 15 
+                        worksheet.column_dimensions['B'].width = 45 
+                        worksheet.column_dimensions['C'].width = 20 
+                        worksheet.column_dimensions['D'].width = 20 
+                        worksheet.column_dimensions['E'].width = 50 
+                    else:
+                        worksheet.column_dimensions['A'].width = 15 
+                        worksheet.column_dimensions['B'].width = 35 
+                        worksheet.column_dimensions['C'].width = 12 
+                        worksheet.column_dimensions['D'].width = 15 
+                        worksheet.column_dimensions['E'].width = 15 
+                        worksheet.column_dimensions['F'].width = 45 
+                        for i in range(7, total_columns + 1):
+                            worksheet.column_dimensions[get_column_letter(i)].width = 16
+                            
+                    worksheet.print_area = f"A1:{last_col_letter}{last_row}"
+                    worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
+                    
+                    if orientation == 'landscape':
+                        worksheet.page_setup.orientation = worksheet.ORIENTATION_LANDSCAPE
+                    else:
+                        worksheet.page_setup.orientation = worksheet.ORIENTATION_PORTRAIT
+                        
+                    worksheet.sheet_properties.pageSetUpPr.fitToPage = True
+                    worksheet.page_setup.fitToWidth = 1
+                    worksheet.page_setup.fitToHeight = 0
+                    worksheet.print_options.horizontalCentered = True
+                    
+                    worksheet.print_title_rows = '1:6'
+                    worksheet.oddFooter.center.text = "&12 صفحة رقم (&P) من (&N)"
+                    worksheet.evenFooter.center.text = "&12 صفحة رقم (&P) من (&N)"
+
+            st.markdown("<div style='display: flex; justify-content: flex-end; width: 100%; margin-top: 15px;'>", unsafe_allow_html=True)
+            
+            safe_exam = exam_period.replace(" ", "_")
+            safe_year = academic_year.replace(" ", "")
+            if level_courses.strip():
+                level_part = f"المستوي_{level_courses.strip()}"
+            else:
+                level_part = "غير_محدد"
+                
+            dynamic_file_name = f"خريطة_لجان_{level_part}_{safe_exam}_{safe_year}.xlsx"
+            
+            st.download_button(
+                label="📥 تحميل خريطة اللجان الرسمية (Excel)", 
+                data=output.getvalue(), 
+                file_name=dynamic_file_name, 
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+                type="primary"
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+            
+    st.markdown("---")
+    if st.button("تفريغ البيانات لرفع ملف جديدة"):
+        st.session_state.rooms_df = None
+        st.session_state.students_df = None
+        st.session_state.courses_order = []
+        st.rerun()
