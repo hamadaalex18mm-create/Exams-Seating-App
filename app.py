@@ -78,7 +78,6 @@ def generate_smart_notes(raw_levels_set):
     for lvl, typ in sorted_keys:
         majors_dict = grouped_data[(lvl, typ)]
         
-        # دالة الدمج تم إصلاحها لطباعة "عادي وموجه" بشكل سليم
         def sort_mods(mods_set):
             m_list = [m for m in set(mods_set) if m]
             m_list.sort() 
@@ -151,6 +150,7 @@ st.markdown("---")
 
 if 'rooms_df' not in st.session_state: st.session_state.rooms_df = None
 if 'students_df' not in st.session_state: st.session_state.students_df = None
+if 'courses_order' not in st.session_state: st.session_state.courses_order = []
 
 # ==========================================
 # الخطوة 1: رفع الملفات
@@ -182,6 +182,8 @@ if st.session_state.rooms_df is None or st.session_state.students_df is None:
             try:
                 all_sheets = pd.read_excel(students_file, sheet_name=None)
                 all_students = []
+                extracted_courses_order = []
+                
                 for sheet_name, df in all_sheets.items():
                     df.columns = df.columns.str.strip()
                     
@@ -190,17 +192,27 @@ if st.session_state.rooms_df is None or st.session_state.students_df is None:
                         "المقرر": "اسم المقرر",
                         "اسم المادة": "اسم المقرر",
                         "الماده": "اسم المقرر",
-                        "رقم جلوس": "رقم الجلوس"
+                        "رقم جلوس": "رقم الجلوس",
+                        "ترتيب المواد": "ترتيب المقررات"
                     }
                     df.rename(columns=col_mapping, inplace=True)
                     
-                    required_students = ["رقم الجلوس", "اسم المقرر", "المستوي"]
+                    # سحب الترتيب המخصص للمواد (بدون التأثر بحذف الصفوف الفارغة لاحقاً)
+                    if "ترتيب المقررات" in df.columns:
+                        order_list = df["ترتيب المقررات"].dropna().astype(str).str.strip().tolist()
+                        for c in order_list:
+                            if c and c != "nan" and c not in extracted_courses_order:
+                                extracted_courses_order.append(c)
                     
+                    required_students = ["رقم الجلوس", "اسم المقرر", "المستوي"]
                     if all(col in df.columns for col in required_students):
                         all_students.append(df[required_students])
                     else:
                         st.warning(f"⚠️ الشيت '{sheet_name}' تم تجاهله لعدم وجود الأعمدة المطلوبة.")
                 
+                # حفظ الترتيب في الذاكرة
+                st.session_state.courses_order = extracted_courses_order
+
                 if all_students:
                     df_all = pd.concat(all_students, ignore_index=True)
                     df_all['رقم الجلوس'] = pd.to_numeric(df_all['رقم الجلوس'], errors='coerce')
@@ -235,12 +247,30 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
     df_students = st.session_state.students_df
     unique_seats = sorted(df_students['رقم الجلوس'].unique())
     total_unique_students = len(unique_seats)
-    all_subjects = sorted(df_students['اسم المقرر'].unique())
+    
+    # ==========================================
+    # ترتيب أعمدة المواد حسب عمود "ترتيب المقررات" المرفق
+    # ==========================================
+    raw_subjects = df_students['اسم المقرر'].unique()
+    all_subjects = []
+    
+    # 1. إضافة المواد بنفس الترتيب اللي إنت كتبته
+    if st.session_state.courses_order:
+        for c in st.session_state.courses_order:
+            if c in raw_subjects:
+                all_subjects.append(c)
+                
+    # 2. إضافة أي مواد تانية موجودة في بيانات الطلبة بس مش مكتوبة في عمود الترتيب (في الآخر)
+    remaining_subjects = sorted([c for c in raw_subjects if c not in all_subjects])
+    all_subjects.extend(remaining_subjects)
+    # ==========================================
     
     seat_courses = df_students.groupby('رقم الجلوس')['اسم المقرر'].apply(lambda x: list(set(x))).to_dict()
     seat_levels = df_students.groupby('رقم الجلوس')['المستوي'].apply(lambda x: list(set(x))).to_dict()
     
     st.info(f"إجمالي عدد الطلبة (بدون تكرار) المطلوب توزيعهم: **{total_unique_students}** طالب.")
+    if st.session_state.courses_order:
+        st.success("✅ تم تفعيل ترتيب المقررات المخصص من الملف المرفق.")
     
     if st.button("🚀 بدء التوزيع وتوليد الوثائق الرسمية", type="primary"):
         with st.spinner("جاري التوزيع وتطبيق معالجة الملاحظات الدقيقة..."):
@@ -358,6 +388,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     'إلى': final_end,
                     'ملاحظات': notes_text
                 }
+                # ترتيب الأعمدة هنا بياخد نفس الترتيب اللي فوق
                 for subj in all_subjects:
                     room_data[subj] = final_course_counts.get(subj, 0)
                     
@@ -609,7 +640,8 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
             st.markdown("</div>", unsafe_allow_html=True)
             
     st.markdown("---")
-    if st.button("تفريغ البيانات لرفع ملفات جديدة"):
+    if st.button("تفريغ البيانات لرفع ملف جديدة"):
         st.session_state.rooms_df = None
         st.session_state.students_df = None
+        st.session_state.courses_order = []
         st.rerun()
