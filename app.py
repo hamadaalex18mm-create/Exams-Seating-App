@@ -8,7 +8,7 @@ import math
 st.set_page_config(page_title="توزيع أماكن الامتحانات", layout="wide")
 
 # ==========================================
-# دالة ذكية لتحويل أرقام المستويات لنصوص (بدون تكرار)
+# دالة ذكية لتحويل أرقام المستويات لنصوص
 # ==========================================
 def format_level(val):
     s = str(val).strip()
@@ -104,7 +104,6 @@ if st.session_state.rooms_df is None or st.session_state.students_df is None:
                 for sheet_name, df in all_sheets.items():
                     df.columns = df.columns.str.strip()
                     
-                    # مرونة في قراءة أسماء الأعمدة لتفادي أخطاء الإدخال
                     col_mapping = {
                         "المستوى": "المستوي",
                         "المقرر": "اسم المقرر",
@@ -190,14 +189,12 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     continue
                 
                 # ==========================================
-                # التعديل الاحترافي: حساب أقصى سعة ممكنة (+1 فقط)
+                # 1. حساب أقصى عدد فريد للطلبة مسموح به (بناءً على سعة كل مادة + 1)
+                # (هنا تم إصلاح الخطأ: مفيش سقف للطلبة الفريدين، السقف للمواد فقط)
                 # ==========================================
                 course_counts = {}
                 max_possible_c = 0
                 for i in range(curr_student_idx, total_unique_students):
-                    if max_possible_c >= room_cap + 1:
-                        break
-                        
                     seat = unique_seats[i]
                     courses_for_seat = seat_courses.get(seat, [])
                     
@@ -207,6 +204,11 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             can_add = False
                             break
                             
+                    # جبر النهايات: لو الكشف كله فاضل فيه 4 أو أقل، نضمهم عافية!
+                    remaining_total_students = total_unique_students - i
+                    if not can_add and remaining_total_students <= 4:
+                        can_add = True 
+                    
                     if not can_add:
                         break 
                         
@@ -215,46 +217,57 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     max_possible_c += 1
                 
                 # ==========================================
-                # تطبيق قاعدة السماحية (-3 إلى +1) للبحث عن الـ 0 أو 5
+                # 2. تطبيق نافذة السماحية (-3 إلى +1) للبحث عن الـ 0 أو 5
                 # ==========================================
                 final_end = None
                 best_c = max_possible_c
                 
-                remaining_after_max = (total_unique_students - curr_student_idx) - max_possible_c
-                
-                if remaining_after_max > 0 and remaining_after_max < 5:
-                    # قاعدة ضم البواقي في آخر الكشف
-                    best_c = total_unique_students - curr_student_idx
-                    last_actual = unique_seats[curr_student_idx + best_c - 1]
-                    final_end = math.ceil(last_actual / 5.0) * 5
-                elif curr_student_idx + max_possible_c == total_unique_students:
-                    # الدفعة الأخيرة وتقفل الكشف بشكل طبيعي
+                if curr_student_idx + max_possible_c == total_unique_students:
+                    # لو دي آخر دفعة في الكشف، نقفل برقم شيك
                     best_c = max_possible_c
                     last_actual = unique_seats[curr_student_idx + best_c - 1]
                     final_end = math.ceil(last_actual / 5.0) * 5
                 else:
-                    # البحث عن 0 أو 5 في حدود نافذة السماحية
-                    upper_search = min(max_possible_c, room_cap + 1)
-                    lower_search = max(1, room_cap - 3)
-                    
-                    if lower_search > upper_search:
-                        lower_search = upper_search
+                    found_nice_end = False
+                    # هنقلل عدد الطلبة تدريجياً ونختبر النهايات
+                    for test_c in range(max_possible_c, 0, -1):
+                        # نحسب الكثافة لأعلى مادة في التجربة دي
+                        temp_counts = {}
+                        for i in range(test_c):
+                            for c in seat_courses.get(unique_seats[curr_student_idx + i], []):
+                                temp_counts[c] = temp_counts.get(c, 0) + 1
+                        current_max_load = max(temp_counts.values()) if temp_counts else 0
                         
-                    for test_c in range(upper_search, lower_search - 1, -1):
+                        # لو الكثافة نزلت عن السعة بأكتر من 3 (يعني هنهدر أماكن كتير) نوقف تدوير!
+                        if current_max_load < room_cap - 3:
+                            break
+                            
+                        # لو إحنا في نافذة السماحية، نختبر هل هتقفل بـ 0 أو 5؟
                         last_included = unique_seats[curr_student_idx + test_c - 1]
                         next_actual = unique_seats[curr_student_idx + test_c]
-                        
                         largest_multiple_of_5 = math.floor((next_actual - 1) / 5.0) * 5
                         
                         if largest_multiple_of_5 >= last_included:
                             final_end = largest_multiple_of_5
                             best_c = test_c
+                            found_nice_end = True
                             break
                             
-                    # لو ملقيناش 0 أو 5 في الحدود دي، نملا اللجنة لسعتها الرسمية 
-                    # عشان منضيعش مساحات عالفاضي
-                    if final_end is None:
-                        best_c = min(max_possible_c, room_cap)
+                    # لو لفينا في نافذة السماحية وملقيناش رقم شيك،
+                    # هنختار العدد اللي يملى السعة الرسمية بالظبط (ولا مكان يضيع)
+                    if not found_nice_end:
+                        target_c = max_possible_c
+                        for test_c in range(max_possible_c, 0, -1):
+                            temp_counts = {}
+                            for i in range(test_c):
+                                for c in seat_courses.get(unique_seats[curr_student_idx + i], []):
+                                    temp_counts[c] = temp_counts.get(c, 0) + 1
+                            current_max_load = max(temp_counts.values()) if temp_counts else 0
+                            if current_max_load <= room_cap:
+                                target_c = test_c
+                                break
+                                
+                        best_c = target_c
                         next_actual = unique_seats[curr_student_idx + best_c]
                         final_end = next_actual - 1
                 # ==========================================
@@ -377,7 +390,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     worksheet = writer.sheets[sheet_name]
                     worksheet.sheet_view.rightToLeft = True 
                     
-                    # إدراج الشعارات (الحفاظ على النسب الطبيعية)
+                    # إدراج الشعارات بدقة
                     target_h = 100 
                     try:
                         from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, AnchorMarker
@@ -424,40 +437,30 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             img2.width, img2.height = int(img2.width * ratio2), int(target_h)
                             worksheet.add_image(img2, f'{last_col_letter}1')
                     
-                    # تصميم الترويسة 
-                    if total_columns > 2:
-                        merge_start = 'B'
-                        merge_end = get_column_letter(total_columns - 1)
-                    else:
-                        merge_start = 'A'
-                        merge_end = 'A'
-                        
-                    if merge_start != merge_end:
-                        worksheet.merge_cells(f'{merge_start}1:{merge_end}1')
-                        worksheet.merge_cells(f'{merge_start}2:{merge_end}2')
-                        worksheet.merge_cells(f'{merge_start}3:{merge_end}3')
-                        
-                    worksheet[f'{merge_start}1'] = f"أماكن امتحانات: {exam_period}"
-                    worksheet[f'{merge_start}2'] = f"العام الجامعي: {academic_year}"
-                    worksheet[f'{merge_start}3'] = f"مقررات المستوي: {level_courses}"
+                    # دمج الترويسة 
+                    worksheet.merge_cells(f'A1:{last_col_letter}1')
+                    worksheet.merge_cells(f'A2:{last_col_letter}2')
+                    worksheet.merge_cells(f'A3:{last_col_letter}3')
+                    
+                    worksheet['A1'] = f"أماكن امتحانات: {exam_period}"
+                    worksheet['A2'] = f"العام الجامعي: {academic_year}"
+                    worksheet['A3'] = f"مقررات المستوي: {level_courses}"
                     
                     for r in range(1, 6):
                         worksheet.row_dimensions[r].height = 35 
                         if r <= 3:
-                            cell = worksheet[f'{merge_start}{r}']
+                            cell = worksheet[f'A{r}']
                             cell.alignment = center_align
                             cell.font = meta_font
                     
                     last_row = worksheet.max_row
                     
-                    # إنشاء جدول الإكسيل للبيانات
                     table_ref = f"A6:{last_col_letter}{last_row}"
                     tab = Table(displayName=f"TableMap_{idx}", ref=table_ref)
                     style = TableStyleInfo(name="TableStyleMedium2", showFirstColumn=False, showLastColumn=False, showRowStripes=True, showColumnStripes=False)
                     tab.tableStyleInfo = style
                     worksheet.add_table(tab)
                     
-                    # تنسيق الخلايا 
                     for r_idx in range(6, last_row + 1):
                         worksheet.row_dimensions[r_idx].height = 26.25 
                         
@@ -486,7 +489,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                                 if is_empty:
                                     cell.fill = empty_fill
                                 
-                    # عرض الأعمدة
                     if sheet_name == 'خريطة اللجان':
                         worksheet.column_dimensions['A'].width = 15 
                         worksheet.column_dimensions['B'].width = 45 
@@ -503,7 +505,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         for i in range(7, total_columns + 1):
                             worksheet.column_dimensions[get_column_letter(i)].width = 16
                             
-                    # إعدادات الطباعة والترقيم
                     worksheet.print_area = f"A1:{last_col_letter}{last_row}"
                     worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
                     
