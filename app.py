@@ -95,7 +95,6 @@ if st.session_state.rooms_df is None or st.session_state.students_df is None:
                 st.error(f"حدث خطأ أثناء قراءة ملف اللجان: {e}")
 
     with col2: 
-        # تحديث النص ليوضح المرونة في الرفع
         st.markdown("**2. ملف الطلبة (شيت واحد مجمع أو عدة شيتات)**")
         students_file = st.file_uploader("ارفع ملف الطلبة بصيغة Excel", type=['xlsx'], key="students_uploader")
         if students_file:
@@ -120,7 +119,7 @@ if st.session_state.rooms_df is None or st.session_state.students_df is None:
                     if all(col in df.columns for col in required_students):
                         all_students.append(df[required_students])
                     else:
-                        st.warning(f"⚠️ الشيت '{sheet_name}' تم تجاهله لعدم وجود الأعمدة المطلوبة: (رقم الجلوس، المقرر، المستوي).")
+                        st.warning(f"⚠️ الشيت '{sheet_name}' تم تجاهله لعدم وجود الأعمدة المطلوبة.")
                 
                 if all_students:
                     df_all = pd.concat(all_students, ignore_index=True)
@@ -164,7 +163,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
     st.info(f"إجمالي عدد الطلبة (بدون تكرار) المطلوب توزيعهم: **{total_unique_students}** طالب.")
     
     if st.button("🚀 بدء التوزيع وتوليد الوثائق الرسمية", type="primary"):
-        with st.spinner("جاري التوزيع والتنسيق الاحترافي لملفات الإكسيل..."):
+        with st.spinner("جاري التوزيع وتطبيق معادلة (السعة المرنة -3 / +1)..."):
             result_data = []
             curr_student_idx = 0
             
@@ -190,41 +189,58 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     result_data.append(empty_room)
                     continue
                 
+                # ==========================================
+                # التعديل الاحترافي: حساب أقصى سعة ممكنة (+1 فقط)
+                # ==========================================
                 course_counts = {}
-                max_c = 0
+                max_possible_c = 0
                 for i in range(curr_student_idx, total_unique_students):
+                    if max_possible_c >= room_cap + 1:
+                        break
+                        
                     seat = unique_seats[i]
                     courses_for_seat = seat_courses.get(seat, [])
                     
                     can_add = True
                     for c in courses_for_seat:
-                        if course_counts.get(c, 0) + 1 > room_cap:
+                        if course_counts.get(c, 0) + 1 > room_cap + 1:
                             can_add = False
                             break
                             
-                    remaining_total_students = total_unique_students - i
-                    if not can_add and remaining_total_students < 5:
-                        can_add = True 
-                    
                     if not can_add:
                         break 
                         
                     for c in courses_for_seat:
                         course_counts[c] = course_counts.get(c, 0) + 1
-                    max_c += 1
+                    max_possible_c += 1
                 
+                # ==========================================
+                # تطبيق قاعدة السماحية (-3 إلى +1) للبحث عن الـ 0 أو 5
+                # ==========================================
                 final_end = None
-                best_c = max_c
+                best_c = max_possible_c
                 
-                if curr_student_idx + max_c == total_unique_students:
-                    last_actual = unique_seats[curr_student_idx + max_c - 1]
+                remaining_after_max = (total_unique_students - curr_student_idx) - max_possible_c
+                
+                if remaining_after_max > 0 and remaining_after_max < 5:
+                    # قاعدة ضم البواقي في آخر الكشف
+                    best_c = total_unique_students - curr_student_idx
+                    last_actual = unique_seats[curr_student_idx + best_c - 1]
                     final_end = math.ceil(last_actual / 5.0) * 5
-                    best_c = max_c
+                elif curr_student_idx + max_possible_c == total_unique_students:
+                    # الدفعة الأخيرة وتقفل الكشف بشكل طبيعي
+                    best_c = max_possible_c
+                    last_actual = unique_seats[curr_student_idx + best_c - 1]
+                    final_end = math.ceil(last_actual / 5.0) * 5
                 else:
-                    for rollback in range(min(10, max_c)): 
-                        test_c = max_c - rollback
-                        if test_c <= 0: continue
+                    # البحث عن 0 أو 5 في حدود نافذة السماحية
+                    upper_search = min(max_possible_c, room_cap + 1)
+                    lower_search = max(1, room_cap - 3)
+                    
+                    if lower_search > upper_search:
+                        lower_search = upper_search
                         
+                    for test_c in range(upper_search, lower_search - 1, -1):
                         last_included = unique_seats[curr_student_idx + test_c - 1]
                         next_actual = unique_seats[curr_student_idx + test_c]
                         
@@ -234,11 +250,14 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             final_end = largest_multiple_of_5
                             best_c = test_c
                             break
-                    
+                            
+                    # لو ملقيناش 0 أو 5 في الحدود دي، نملا اللجنة لسعتها الرسمية 
+                    # عشان منضيعش مساحات عالفاضي
                     if final_end is None:
-                        best_c = max_c
+                        best_c = min(max_possible_c, room_cap)
                         next_actual = unique_seats[curr_student_idx + best_c]
                         final_end = next_actual - 1
+                # ==========================================
                 
                 final_course_counts = {}
                 room_levels = set()
