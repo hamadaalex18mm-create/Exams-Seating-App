@@ -8,20 +8,86 @@ import math
 st.set_page_config(page_title="توزيع أماكن الامتحانات", layout="wide")
 
 # ==========================================
-# دالة ذكية لتحويل أرقام المستويات لنصوص (بدون تكرار)
+# محرك الذكاء اللغوي لتلخيص ودمج المستويات
 # ==========================================
-def format_level(val):
-    s = str(val).strip()
-    s = s.replace("المستوي", "").replace("المستوى", "").strip()
-    
-    parts = s.split()
-    if parts:
-        if parts[0] == '1': parts[0] = 'الاول'
-        elif parts[0] == '2': parts[0] = 'الثاني'
-        elif parts[0] == '3': parts[0] = 'الثالث'
-        elif parts[0] == '4': parts[0] = 'الرابع'
+def generate_smart_notes(raw_levels_set):
+    if not raw_levels_set:
+        return ""
+
+    # قائمة بكل الشعب المحتملة بجميع طرق كتابتها
+    majors_to_remove = [
+        "إدارة الأعمال", "ادارة الاعمال", "إداره الاعمال", "اداره الاعمال",
+        "الموارد البشرية", "موارد بشرية", "الموارد البشریة", "موارد بشریة",
+        "نظم المعلومات", "نظم معلومات",
+        "المحاسبة", "محاسبة", "محاسبه",
+        "الإدارة", "الادارة", "إدارة", "ادارة", "إداره", "اداره",
+        "الإحصاء", "الاحصاء", "إحصاء", "احصاء",
+        "التمويل", "تمويل",
+        "الجمارك", "جمارك",
+        "التسويق", "تسويق",
+        "النظم", "نظم"
+    ]
+    # ترتيب من الأطول للأقصر عشان يمسح الجملة كاملة صح
+    majors_to_remove.sort(key=len, reverse=True)
+
+    level_map = {'1': 'الاول', '2': 'الثاني', '3': 'الثالث', '4': 'الرابع'}
+    level_order = {'الاول': 1, 'الثاني': 2, 'الثالث': 3, 'الرابع': 4}
+
+    parsed_data = {}
+
+    for raw in raw_levels_set:
+        s = str(raw).strip()
+        s = s.replace("المستوي", "").replace("المستوى", "").strip()
+
+        parts = s.split()
+        if not parts: continue
+
+        lvl = parts[0]
+        if lvl in level_map:
+            lvl = level_map[lvl]
+
+        remaining_parts = parts[1:] if parts[0] in level_map or parts[0] in level_order.keys() else parts
+        rem_str = " ".join(remaining_parts)
+
+        # مسح الشعب من النص
+        for m in majors_to_remove:
+            rem_str = rem_str.replace(m, "")
+
+        rem_parts = rem_str.split()
+
+        if not rem_parts:
+            base_type = ""
+            modifier = ""
+        else:
+            base_type = rem_parts[0] # انتظام أو انتساب
+            modifier = " ".join(rem_parts[1:]) # عادي أو موجه
+
+        key = (lvl, base_type)
+        if key not in parsed_data:
+            parsed_data[key] = set()
         
-    return " ".join(parts)
+        if modifier:
+            parsed_data[key].add(modifier)
+        else:
+            parsed_data[key].add("")
+
+    grouped_results = []
+    sorted_keys = sorted(list(parsed_data.keys()), key=lambda k: (level_order.get(k[0], 99), k[0], k[1]))
+
+    for lvl, base_type in sorted_keys:
+        modifiers = sorted(list(parsed_data[(lvl, base_type)]))
+        mods = [m for m in modifiers if m]
+
+        if mods:
+            # دمج ذكي: لو فيه "عادي" و "موجه" يخليهم "عادي وموجه"
+            mod_str = " و".join(mods)
+            grouped_results.append(f"{lvl} {base_type} {mod_str}".strip())
+        else:
+            grouped_results.append(f"{lvl} {base_type}".strip())
+
+    if grouped_results:
+        return "المستوي " + " & ".join(grouped_results)
+    return ""
 
 # ==========================================
 # ستايل الواجهة الأساسي
@@ -162,7 +228,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
     st.info(f"إجمالي عدد الطلبة (بدون تكرار) المطلوب توزيعهم: **{total_unique_students}** طالب.")
     
     if st.button("🚀 بدء التوزيع وتوليد الوثائق الرسمية", type="primary"):
-        with st.spinner("جاري التوزيع وتطبيق معادلة (السعة المرنة -3 / +1)..."):
+        with st.spinner("جاري التوزيع وتطبيق معادلة (السعة المرنة -3 / +1) وتلخيص الملاحظات..."):
             result_data = []
             curr_student_idx = 0
             
@@ -267,30 +333,8 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     for lvl in seat_levels.get(current_seat, []):
                         room_levels.add(str(lvl))
                 
-                if room_levels:
-                    sorted_raw_levels = sorted(list(room_levels))
-                    formatted_levels = []
-                    for l in sorted_raw_levels:
-                        f_lvl = format_level(l)
-                        if f_lvl not in formatted_levels:
-                            formatted_levels.append(f_lvl)
-                    
-                    if len(formatted_levels) > 2:
-                        simplified_levels = []
-                        for lvl in formatted_levels:
-                            words = lvl.split()
-                            if len(words) >= 3:
-                                simplified = f"{words[0]} {words[-1]}" 
-                                if simplified not in simplified_levels:
-                                    simplified_levels.append(simplified)
-                            else:
-                                if lvl not in simplified_levels:
-                                    simplified_levels.append(lvl)
-                        notes_text = "المستوي " + " & ".join(simplified_levels)
-                    else:
-                        notes_text = "المستوي " + " & ".join(formatted_levels)
-                else:
-                    notes_text = ""
+                # استخدام محرك الذكاء اللغوي
+                notes_text = generate_smart_notes(room_levels)
                 
                 room_data = {
                     'رقم اللجنة': room_num,
@@ -359,10 +403,9 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 data_font = Font(bold=True, size=12) 
                 meta_font = Font(bold=True, size=16, color="1E3A8A") 
                 
-                # ===== التنسيقات الخاصة بالكثافة الزائدة =====
+                # التنسيقات الخاصة بالكثافة الزائدة (خلفية صفرا وخط أحمر)
                 yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
                 red_bold_font = Font(color="FF0000", bold=True, size=12)
-                # ===============================================
                 
                 fac_logo = "logo_faculty.png" if os.path.exists("logo_faculty.png") else "logo_faculty.jpg" if os.path.exists("logo_faculty.jpg") else None
                 unit_logo = "logo_unit.png" if os.path.exists("logo_unit.png") else "logo_unit.jpg" if os.path.exists("logo_unit.jpg") else None
@@ -379,7 +422,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     worksheet = writer.sheets[sheet_name]
                     worksheet.sheet_view.rightToLeft = True 
                     
-                    # إدراج الشعارات 
+                    # إدراج الشعارات بدقة
                     target_h = 100 
                     try:
                         from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, AnchorMarker
@@ -415,51 +458,33 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             worksheet.add_image(img2)
                             
                     except Exception:
-                        if fac_logo:
-                            img1 = xlImage(fac_logo)
-                            ratio1 = target_h / img1.height
-                            img1.width, img1.height = int(img1.width * ratio1), int(target_h)
-                            worksheet.add_image(img1, 'A1')
-                        if unit_logo:
-                            img2 = xlImage(unit_logo)
-                            ratio2 = target_h / img2.height
-                            img2.width, img2.height = int(img2.width * ratio2), int(target_h)
-                            worksheet.add_image(img2, f'{last_col_letter}1')
+                        pass
                     
-                    # تصميم الترويسة 
-                    if total_columns > 2:
-                        merge_start = 'B'
-                        merge_end = get_column_letter(total_columns - 1)
-                    else:
-                        merge_start = 'A'
-                        merge_end = 'A'
-                        
-                    if merge_start != merge_end:
-                        worksheet.merge_cells(f'{merge_start}1:{merge_end}1')
-                        worksheet.merge_cells(f'{merge_start}2:{merge_end}2')
-                        worksheet.merge_cells(f'{merge_start}3:{merge_end}3')
-                        
-                    worksheet[f'{merge_start}1'] = f"أماكن امتحانات: {exam_period}"
-                    worksheet[f'{merge_start}2'] = f"العام الجامعي: {academic_year}"
-                    worksheet[f'{merge_start}3'] = f"مقررات المستوي: {level_courses}"
+                    # دمج الترويسة 
+                    worksheet.merge_cells(f'A1:{last_col_letter}1')
+                    worksheet.merge_cells(f'A2:{last_col_letter}2')
+                    worksheet.merge_cells(f'A3:{last_col_letter}3')
+                    
+                    worksheet['A1'] = f"أماكن امتحانات: {exam_period}"
+                    worksheet['A2'] = f"العام الجامعي: {academic_year}"
+                    worksheet['A3'] = f"مقررات المستوي: {level_courses}"
                     
                     for r in range(1, 6):
                         worksheet.row_dimensions[r].height = 35 
                         if r <= 3:
-                            cell = worksheet[f'{merge_start}{r}']
+                            cell = worksheet[f'A{r}']
                             cell.alignment = center_align
                             cell.font = meta_font
                     
                     last_row = worksheet.max_row
                     
-                    # إنشاء جدول الإكسيل للبيانات
                     table_ref = f"A6:{last_col_letter}{last_row}"
                     tab = Table(displayName=f"TableMap_{idx}", ref=table_ref)
                     style = TableStyleInfo(name="TableStyleMedium2", showFirstColumn=False, showLastColumn=False, showRowStripes=True, showColumnStripes=False)
                     tab.tableStyleInfo = style
                     worksheet.add_table(tab)
                     
-                    # تنسيق الخلايا وإضافة التمييز اللوني للكثافة
+                    # تنسيق الخلايا وإضافة التمييز اللوني للكثافة الزائدة
                     for r_idx in range(6, last_row + 1):
                         worksheet.row_dimensions[r_idx].height = 26.25 
                         
@@ -472,7 +497,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             else:
                                 is_empty = (worksheet.cell(row=r_idx, column=4).value == '-') 
                                 try:
-                                    # استخراج سعة اللجنة للمقارنة (موجودة في العمود التالت)
                                     capacity_val = int(worksheet.cell(row=r_idx, column=3).value)
                                 except:
                                     capacity_val = 0
@@ -495,7 +519,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                                 if is_empty:
                                     cell.fill = empty_fill
                                 else:
-                                    # تطبيق التمييز اللوني (الأصفر والأحمر) في الشيت التفصيلي لأعمدة المواد (بعد العمود الـ 6)
+                                    # التظليل الأصفر والخط الأحمر لو العدد تخطى سعة اللجنة (+1)
                                     if sheet_name == 'الخريطة التفصيلية' and c_idx > 6:
                                         try:
                                             subject_count = int(cell.value)
@@ -505,7 +529,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                                         except:
                                             pass
                                 
-                    # عرض الأعمدة
                     if sheet_name == 'خريطة اللجان':
                         worksheet.column_dimensions['A'].width = 15 
                         worksheet.column_dimensions['B'].width = 45 
@@ -522,7 +545,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         for i in range(7, total_columns + 1):
                             worksheet.column_dimensions[get_column_letter(i)].width = 16
                             
-                    # إعدادات الطباعة والترقيم
                     worksheet.print_area = f"A1:{last_col_letter}{last_row}"
                     worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
                     
