@@ -398,23 +398,16 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
             
             final_df = pd.DataFrame(result_data)
             
-            # ==========================================
             # إضافة صف الإجمالي للخريطة التفصيلية فقط
-            # ==========================================
             total_row_data = {col: '-' for col in final_df.columns}
             total_row_data['رقم اللجنة'] = 'الإجمالي'
             total_row_data['مكان اللجنة'] = 'إجمالي السعة وأعداد الطلبة'
-            
-            # جمع سعة اللجان
             total_row_data['سعة اللجنة'] = sum([int(r['سعة اللجنة']) for r in result_data if str(r['سعة اللجنة']).isdigit()])
             
-            # جمع أعداد الطلبة لكل مادة
             for subj in all_subjects:
                 total_row_data[subj] = sum([int(r[subj]) for r in result_data if str(r[subj]).isdigit()])
             
-            # دمج صف الإجمالي
             final_df = pd.concat([final_df, pd.DataFrame([total_row_data])], ignore_index=True)
-            # ==========================================
 
             summary_data = []
             for row in result_data:
@@ -467,7 +460,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 
                 yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
                 red_bold_font = Font(color="FF0000", bold=True, size=12)
-                
                 total_row_fill = PatternFill(start_color="BDD7EE", end_color="BDD7EE", fill_type="solid")
                 
                 fac_logo = "logo_faculty.png" if os.path.exists("logo_faculty.png") else "logo_faculty.jpg" if os.path.exists("logo_faculty.jpg") else None
@@ -524,16 +516,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             worksheet.add_image(img2)
                             
                     except Exception:
-                        if fac_logo:
-                            img1 = xlImage(fac_logo)
-                            ratio1 = target_h / img1.height
-                            img1.width, img1.height = int(img1.width * ratio1), int(target_h)
-                            worksheet.add_image(img1, 'A1')
-                        if unit_logo:
-                            img2 = xlImage(unit_logo)
-                            ratio2 = target_h / img2.height
-                            img2.width, img2.height = int(img2.width * ratio2), int(target_h)
-                            worksheet.add_image(img2, f'{last_col_letter}1')
+                        pass
                     
                     if total_columns > 2:
                         merge_start = 'B'
@@ -550,6 +533,13 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     worksheet[f'{merge_start}1'] = f"أماكن امتحانات: {exam_period}"
                     worksheet[f'{merge_start}2'] = f"العام الجامعي: {academic_year}"
                     worksheet[f'{merge_start}3'] = f"مقررات المستوي: {level_courses}"
+                    
+                    # ==========================================
+                    # إضافة قسم الشئون العامة تحت شعار الكلية
+                    # ==========================================
+                    worksheet['A3'] = "قسم الشئون العامة"
+                    worksheet['A3'].font = Font(bold=True, size=14)
+                    worksheet['A3'].alignment = Alignment(horizontal='center', vertical='center', readingOrder=2)
                     
                     for r in range(1, 6):
                         worksheet.row_dimensions[r].height = 35 
@@ -614,13 +604,13 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                                             pass
                                 
                     if sheet_name == 'خريطة اللجان':
-                        worksheet.column_dimensions['A'].width = 15 
+                        worksheet.column_dimensions['A'].width = 18 # عرضناها لـ 18 عشان قسم الشئون العامة يستريح
                         worksheet.column_dimensions['B'].width = 45 
                         worksheet.column_dimensions['C'].width = 20 
                         worksheet.column_dimensions['D'].width = 20 
                         worksheet.column_dimensions['E'].width = 50 
                     else:
-                        worksheet.column_dimensions['A'].width = 15 
+                        worksheet.column_dimensions['A'].width = 18 # هنا كمان 18
                         worksheet.column_dimensions['B'].width = 40 
                         worksheet.column_dimensions['C'].width = 12 
                         worksheet.column_dimensions['D'].width = 15 
