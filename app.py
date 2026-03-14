@@ -15,10 +15,10 @@ def normalize_arabic(text):
     if not isinstance(text, str):
         return ""
     t = text.strip()
-    t = re.sub(r'[إأآا]', 'ا', t) # توحيد الألف
-    t = re.sub(r'ة', 'ه', t)      # توحيد التاء المربوطة والهاء
-    t = re.sub(r'[يى]', 'ى', t)   # توحيد الياء
-    t = re.sub(r'\s+', ' ', t)    # إزالة المسافات الزايدة
+    t = re.sub(r'[إأآا]', 'ا', t) 
+    t = re.sub(r'ة', 'ه', t)      
+    t = re.sub(r'[يى]', 'ى', t)   
+    t = re.sub(r'\s+', ' ', t)    
     return t
 
 # ==========================================
@@ -252,23 +252,18 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
     unique_seats = sorted(df_students['رقم الجلوس'].unique())
     total_unique_students = len(unique_seats)
     
-    # ==========================================
-    # ترتيب المقررات مع التغاضي عن الأخطاء الإملائية
-    # ==========================================
     raw_subjects = df_students['اسم المقرر'].unique()
     all_subjects = []
     
     if st.session_state.courses_order:
         for ordered_c in st.session_state.courses_order:
             norm_ordered = normalize_arabic(ordered_c)
-            # البحث عن المادة في البيانات الفعلية بعد توحيد النص
             for actual_c in raw_subjects:
                 if normalize_arabic(actual_c) == norm_ordered and actual_c not in all_subjects:
                     all_subjects.append(actual_c)
                 
     remaining_subjects = sorted([c for c in raw_subjects if c not in all_subjects])
     all_subjects.extend(remaining_subjects)
-    # ==========================================
     
     seat_courses = df_students.groupby('رقم الجلوس')['اسم المقرر'].apply(lambda x: list(set(x))).to_dict()
     seat_levels = df_students.groupby('رقم الجلوس')['المستوي'].apply(lambda x: list(set(x))).to_dict()
@@ -278,7 +273,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
         st.success("✅ تم تفعيل ترتيب المقررات المخصص وتوحيد الأسماء بنجاح.")
     
     if st.button("🚀 بدء التوزيع وتوليد الوثائق الرسمية", type="primary"):
-        with st.spinner("جاري التوزيع وتطبيق معالجة الملاحظات الدقيقة (سعة صارمة بدون +1)..."):
+        with st.spinner("جاري التوزيع وبناء جداول اللجان..."):
             result_data = []
             curr_student_idx = 0
             
@@ -401,8 +396,23 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 current_range_start = final_end + 1
                 curr_student_idx += best_c
             
+            # --- إنشاء الداتا فريم الأساسي ---
             final_df = pd.DataFrame(result_data)
             
+            # ==========================================
+            # إضافة صف الإجمالي للخريطة التفصيلية فقط
+            # ==========================================
+            total_row_data = {col: '-' for col in final_df.columns}
+            total_row_data['رقم اللجنة'] = 'الإجمالي'
+            total_row_data['مكان اللجنة'] = 'إجمالي عدد الطلبة لكل مادة'
+            for subj in all_subjects:
+                # نجمع أي رقم موجود ونتجاهل علامة '-' للجان الفاضية
+                total_row_data[subj] = sum([int(r[subj]) for r in result_data if str(r[subj]).isdigit()])
+            
+            # دمج صف الإجمالي في الداتا فريم التفصيلي عشان يظهر في الموقع والإكسيل
+            final_df = pd.concat([final_df, pd.DataFrame([total_row_data])], ignore_index=True)
+            # ==========================================
+
             summary_data = []
             for row in result_data:
                 summary_data.append({
@@ -454,6 +464,9 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 
                 yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
                 red_bold_font = Font(color="FF0000", bold=True, size=12)
+                
+                # لون مميز لصف الإجمالي (أزرق فاتح جداً)
+                total_row_fill = PatternFill(start_color="BDD7EE", end_color="BDD7EE", fill_type="solid")
                 
                 fac_logo = "logo_faculty.png" if os.path.exists("logo_faculty.png") else "logo_faculty.jpg" if os.path.exists("logo_faculty.jpg") else None
                 unit_logo = "logo_unit.png" if os.path.exists("logo_unit.png") else "logo_unit.jpg" if os.path.exists("logo_unit.jpg") else None
@@ -509,16 +522,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             worksheet.add_image(img2)
                             
                     except Exception:
-                        if fac_logo:
-                            img1 = xlImage(fac_logo)
-                            ratio1 = target_h / img1.height
-                            img1.width, img1.height = int(img1.width * ratio1), int(target_h)
-                            worksheet.add_image(img1, 'A1')
-                        if unit_logo:
-                            img2 = xlImage(unit_logo)
-                            ratio2 = target_h / img2.height
-                            img2.width, img2.height = int(img2.width * ratio2), int(target_h)
-                            worksheet.add_image(img2, f'{last_col_letter}1')
+                        pass
                     
                     if total_columns > 2:
                         merge_start = 'B'
@@ -551,17 +555,19 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     tab.tableStyleInfo = style
                     worksheet.add_table(tab)
                     
+                    # تنسيق الخلايا وتطبيق ألوان الإجمالي والكثافة
                     for r_idx in range(6, last_row + 1):
                         worksheet.row_dimensions[r_idx].height = 26.25 
                         
                         is_empty = False
+                        is_total_row = (sheet_name == 'الخريطة التفصيلية' and r_idx == last_row)
                         capacity_val = 0
                         
                         if r_idx > 6:
                             if sheet_name == 'خريطة اللجان':
-                                is_empty = (worksheet.cell(row=r_idx, column=3).value == '-') 
+                                is_empty = (str(worksheet.cell(row=r_idx, column=3).value).strip() == '-') 
                             else:
-                                is_empty = (worksheet.cell(row=r_idx, column=4).value == '-') 
+                                is_empty = (str(worksheet.cell(row=r_idx, column=4).value).strip() == '-') 
                                 try:
                                     capacity_val = int(worksheet.cell(row=r_idx, column=3).value)
                                 except:
@@ -582,7 +588,11 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                                 else:
                                     cell.alignment = center_align
                                     
-                                if is_empty:
+                                # أولوية الألوان: صف الإجمالي الأول، ثم اللجان الفاضية، ثم الكثافة الزائدة
+                                if is_total_row:
+                                    cell.fill = total_row_fill
+                                    cell.font = Font(bold=True, size=13, color="000000")
+                                elif is_empty:
                                     cell.fill = empty_fill
                                 else:
                                     if sheet_name == 'الخريطة التفصيلية' and c_idx > 6:
@@ -602,7 +612,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         worksheet.column_dimensions['E'].width = 50 
                     else:
                         worksheet.column_dimensions['A'].width = 15 
-                        worksheet.column_dimensions['B'].width = 35 
+                        worksheet.column_dimensions['B'].width = 40 # تكبير طفيف لاحتواء كلمة "إجمالي عدد الطلبة لكل مادة"
                         worksheet.column_dimensions['C'].width = 12 
                         worksheet.column_dimensions['D'].width = 15 
                         worksheet.column_dimensions['E'].width = 15 
