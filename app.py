@@ -3,17 +3,30 @@ import pandas as pd
 import io
 import os
 import math
+import re
 
 # إعدادات الصفحة
 st.set_page_config(page_title="توزيع أماكن الامتحانات", layout="wide")
 
 # ==========================================
-# محرك الذكاء اللغوي (الإصدار النهائي لتفكيك ودمج الملاحظات)
+# 1. فلتر توحيد النصوص العربية (لمعالجة اختلافات الكتابة والهمزات)
+# ==========================================
+def normalize_arabic(text):
+    if not isinstance(text, str):
+        return ""
+    t = text.strip()
+    t = re.sub(r'[إأآا]', 'ا', t) # توحيد الألف
+    t = re.sub(r'ة', 'ه', t)      # توحيد التاء المربوطة والهاء
+    t = re.sub(r'[يى]', 'ى', t)   # توحيد الياء
+    t = re.sub(r'\s+', ' ', t)    # إزالة المسافات الزايدة
+    return t
+
+# ==========================================
+# 2. محرك الذكاء اللغوي لتفكيك ودمج الملاحظات
 # ==========================================
 def parse_level_string(raw_str):
     s = str(raw_str).replace("المستوي", "").replace("المستوى", "").strip()
     
-    # 1. استخراج المستوى
     lvl = ""
     level_map = {'1': 'الاول', '2': 'الثاني', '3': 'الثالث', '4': 'الرابع', 
                  'الاول': 'الاول', 'الثاني': 'الثاني', 'الثالث': 'الثالث', 'الرابع': 'الرابع'}
@@ -25,7 +38,6 @@ def parse_level_string(raw_str):
             s = " ".join(words)
             break
             
-    # 2. استخراج الشعبة
     mjr = ""
     majors = ["إدارة الأعمال", "ادارة الاعمال", "إداره الاعمال", "اداره الاعمال", 
               "الموارد البشرية", "موارد بشرية", "الموارد البشریة", "موارد بشریة", "موارد",
@@ -40,7 +52,6 @@ def parse_level_string(raw_str):
             s = s.replace(m, "", 1).strip()
             break
             
-    # 3. استخراج حالة القيد
     typ = ""
     for t in ["انتظام", "انتساب"]:
         if t in s:
@@ -48,7 +59,6 @@ def parse_level_string(raw_str):
             s = s.replace(t, "", 1).strip()
             break
             
-    # 4. ما تبقى هو الإضافة (عادي / موجه)
     mod = " ".join(s.split())
     return lvl, mjr, typ, mod
 
@@ -57,7 +67,6 @@ def generate_smart_notes(raw_levels_set):
         return ""
 
     grouped_data = {}
-    
     for raw in raw_levels_set:
         lvl, mjr, typ, mod = parse_level_string(raw)
         key = (lvl, typ)
@@ -72,7 +81,6 @@ def generate_smart_notes(raw_levels_set):
 
     level_order = {'الاول': 1, 'الثاني': 2, 'الثالث': 3, 'الرابع': 4}
     sorted_keys = sorted(list(grouped_data.keys()), key=lambda k: (level_order.get(k[0], 99), k[0], k[1]))
-    
     results = []
     
     for lvl, typ in sorted_keys:
@@ -87,14 +95,12 @@ def generate_smart_notes(raw_levels_set):
             mjr = list(majors_dict.keys())[0]
             mods = majors_dict[mjr]
             mods_str = sort_mods(mods)
-            
             parts = [p for p in [lvl, mjr, typ, mods_str] if p]
             results.append(" ".join(parts))
         else:
             all_mods = set()
             for m_mods in majors_dict.values():
                 all_mods.update(m_mods)
-            
             mods_str = sort_mods(all_mods)
             parts = [p for p in [lvl, typ, mods_str] if p]
             results.append(" ".join(parts))
@@ -246,23 +252,30 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
     unique_seats = sorted(df_students['رقم الجلوس'].unique())
     total_unique_students = len(unique_seats)
     
+    # ==========================================
+    # ترتيب المقررات مع التغاضي عن الأخطاء الإملائية
+    # ==========================================
     raw_subjects = df_students['اسم المقرر'].unique()
     all_subjects = []
     
     if st.session_state.courses_order:
-        for c in st.session_state.courses_order:
-            if c in raw_subjects:
-                all_subjects.append(c)
+        for ordered_c in st.session_state.courses_order:
+            norm_ordered = normalize_arabic(ordered_c)
+            # البحث عن المادة في البيانات الفعلية بعد توحيد النص
+            for actual_c in raw_subjects:
+                if normalize_arabic(actual_c) == norm_ordered and actual_c not in all_subjects:
+                    all_subjects.append(actual_c)
                 
     remaining_subjects = sorted([c for c in raw_subjects if c not in all_subjects])
     all_subjects.extend(remaining_subjects)
+    # ==========================================
     
     seat_courses = df_students.groupby('رقم الجلوس')['اسم المقرر'].apply(lambda x: list(set(x))).to_dict()
     seat_levels = df_students.groupby('رقم الجلوس')['المستوي'].apply(lambda x: list(set(x))).to_dict()
     
     st.info(f"إجمالي عدد الطلبة (بدون تكرار) المطلوب توزيعهم: **{total_unique_students}** طالب.")
     if st.session_state.courses_order:
-        st.success("✅ تم تفعيل ترتيب المقررات المخصص من الملف المرفق.")
+        st.success("✅ تم تفعيل ترتيب المقررات المخصص وتوحيد الأسماء بنجاح.")
     
     if st.button("🚀 بدء التوزيع وتوليد الوثائق الرسمية", type="primary"):
         with st.spinner("جاري التوزيع وتطبيق معالجة الملاحظات الدقيقة (سعة صارمة بدون +1)..."):
@@ -291,9 +304,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     result_data.append(empty_room)
                     continue
                 
-                # ==========================================
-                # التعديل الجديد: السعة صارمة (مفيش +1)
-                # ==========================================
                 course_counts = {}
                 max_possible_c = 0
                 for i in range(curr_student_idx, total_unique_students):
@@ -302,11 +312,10 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     
                     can_add = True
                     for c in courses_for_seat:
-                        if course_counts.get(c, 0) + 1 > room_cap: # السعة صارمة هنا
+                        if course_counts.get(c, 0) + 1 > room_cap: 
                             can_add = False
                             break
                             
-                    # جبر النهايات: لو الكشف كله فاضل فيه 4 أو أقل، نضمهم عافية
                     remaining_total_students = total_unique_students - i
                     if not can_add and remaining_total_students <= 4:
                         can_add = True 
@@ -334,7 +343,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                                 temp_counts[c] = temp_counts.get(c, 0) + 1
                         current_max_load = max(temp_counts.values()) if temp_counts else 0
                         
-                        # السماحية التنازلية (-3) عشان نقفل برقم شيك
                         if current_max_load < room_cap - 3:
                             break
                             
