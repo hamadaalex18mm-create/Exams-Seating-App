@@ -398,7 +398,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
             
             final_df = pd.DataFrame(result_data)
             
-            # إضافة صف الإجمالي للخريطة التفصيلية فقط
             total_row_data = {col: '-' for col in final_df.columns}
             total_row_data['رقم اللجنة'] = 'الإجمالي'
             total_row_data['مكان اللجنة'] = 'إجمالي السعة وأعداد الطلبة'
@@ -518,31 +517,26 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     except Exception:
                         pass
                     
-                    if total_columns > 2:
-                        merge_start = 'B'
-                        merge_end = get_column_letter(total_columns - 1)
-                    else:
-                        merge_start = 'A'
-                        merge_end = 'A'
-                        
-                    if merge_start != merge_end:
-                        worksheet.merge_cells(f'{merge_start}1:{merge_end}1')
-                        worksheet.merge_cells(f'{merge_start}2:{merge_end}2')
-                        worksheet.merge_cells(f'{merge_start}3:{merge_end}3')
-                        
+                    # السنترة المثالية: دمج من العمود الأول (A) للعمود الأخير
+                    merge_start = 'A'
+                    merge_end = get_column_letter(total_columns)
+                    
+                    worksheet.merge_cells(f'{merge_start}1:{merge_end}1')
+                    worksheet.merge_cells(f'{merge_start}2:{merge_end}2')
+                    worksheet.merge_cells(f'{merge_start}3:{merge_end}3')
+                    
                     worksheet[f'{merge_start}1'] = f"أماكن امتحانات: {exam_period}"
                     worksheet[f'{merge_start}2'] = f"العام الجامعي: {academic_year}"
                     worksheet[f'{merge_start}3'] = f"مقررات المستوي: {level_courses}"
                     
-                    # ==========================================
-                    # إضافة قسم الشئون العامة تحت شعار الكلية
-                    # ==========================================
-                    worksheet['A3'] = "قسم الشئون العامة"
-                    worksheet['A3'].font = Font(bold=True, size=14)
-                    worksheet['A3'].alignment = Alignment(horizontal='center', vertical='center', readingOrder=2)
+                    # إضافة "قسم الشئون العامة" في السطر الرابع أسفل الشعار
+                    worksheet['A4'] = "قسم الشئون العامة"
+                    worksheet['A4'].font = Font(bold=True, size=14)
+                    worksheet['A4'].alignment = center_align
                     
                     for r in range(1, 6):
-                        worksheet.row_dimensions[r].height = 35 
+                        # السطر الرابع أصغر شوية عشان الشكل الجمالي
+                        worksheet.row_dimensions[r].height = 35 if r <= 3 else 25
                         if r <= 3:
                             cell = worksheet[f'{merge_start}{r}']
                             cell.alignment = center_align
@@ -604,18 +598,18 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                                             pass
                                 
                     if sheet_name == 'خريطة اللجان':
-                        worksheet.column_dimensions['A'].width = 18 # عرضناها لـ 18 عشان قسم الشئون العامة يستريح
+                        worksheet.column_dimensions['A'].width = 20 
                         worksheet.column_dimensions['B'].width = 45 
                         worksheet.column_dimensions['C'].width = 20 
                         worksheet.column_dimensions['D'].width = 20 
-                        worksheet.column_dimensions['E'].width = 50 
+                        worksheet.column_dimensions['E'].width = 48 
                     else:
-                        worksheet.column_dimensions['A'].width = 18 # هنا كمان 18
+                        worksheet.column_dimensions['A'].width = 20 
                         worksheet.column_dimensions['B'].width = 40 
                         worksheet.column_dimensions['C'].width = 12 
                         worksheet.column_dimensions['D'].width = 15 
                         worksheet.column_dimensions['E'].width = 15 
-                        worksheet.column_dimensions['F'].width = 45 
+                        worksheet.column_dimensions['F'].width = 40 
                         for i in range(7, total_columns + 1):
                             worksheet.column_dimensions[get_column_letter(i)].width = 16
                             
