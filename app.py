@@ -273,7 +273,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
         st.success("✅ تم تفعيل ترتيب المقررات المخصص وتوحيد الأسماء بنجاح.")
     
     if st.button("🚀 بدء التوزيع وتوليد الوثائق الرسمية", type="primary"):
-        with st.spinner("جاري التوزيع وبناء جداول اللجان..."):
+        with st.spinner("جاري التوزيع وتطبيق معالجة الملاحظات الدقيقة (سعة صارمة بدون +1)..."):
             result_data = []
             curr_student_idx = 0
             
@@ -396,7 +396,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 current_range_start = final_end + 1
                 curr_student_idx += best_c
             
-            # --- إنشاء الداتا فريم الأساسي ---
             final_df = pd.DataFrame(result_data)
             
             # ==========================================
@@ -404,12 +403,16 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
             # ==========================================
             total_row_data = {col: '-' for col in final_df.columns}
             total_row_data['رقم اللجنة'] = 'الإجمالي'
-            total_row_data['مكان اللجنة'] = 'إجمالي عدد الطلبة لكل مادة'
+            total_row_data['مكان اللجنة'] = 'إجمالي السعة وأعداد الطلبة'
+            
+            # جمع سعة اللجان
+            total_row_data['سعة اللجنة'] = sum([int(r['سعة اللجنة']) for r in result_data if str(r['سعة اللجنة']).isdigit()])
+            
+            # جمع أعداد الطلبة لكل مادة
             for subj in all_subjects:
-                # نجمع أي رقم موجود ونتجاهل علامة '-' للجان الفاضية
                 total_row_data[subj] = sum([int(r[subj]) for r in result_data if str(r[subj]).isdigit()])
             
-            # دمج صف الإجمالي في الداتا فريم التفصيلي عشان يظهر في الموقع والإكسيل
+            # دمج صف الإجمالي
             final_df = pd.concat([final_df, pd.DataFrame([total_row_data])], ignore_index=True)
             # ==========================================
 
@@ -465,7 +468,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                 yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
                 red_bold_font = Font(color="FF0000", bold=True, size=12)
                 
-                # لون مميز لصف الإجمالي (أزرق فاتح جداً)
                 total_row_fill = PatternFill(start_color="BDD7EE", end_color="BDD7EE", fill_type="solid")
                 
                 fac_logo = "logo_faculty.png" if os.path.exists("logo_faculty.png") else "logo_faculty.jpg" if os.path.exists("logo_faculty.jpg") else None
@@ -522,7 +524,16 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                             worksheet.add_image(img2)
                             
                     except Exception:
-                        pass
+                        if fac_logo:
+                            img1 = xlImage(fac_logo)
+                            ratio1 = target_h / img1.height
+                            img1.width, img1.height = int(img1.width * ratio1), int(target_h)
+                            worksheet.add_image(img1, 'A1')
+                        if unit_logo:
+                            img2 = xlImage(unit_logo)
+                            ratio2 = target_h / img2.height
+                            img2.width, img2.height = int(img2.width * ratio2), int(target_h)
+                            worksheet.add_image(img2, f'{last_col_letter}1')
                     
                     if total_columns > 2:
                         merge_start = 'B'
@@ -555,7 +566,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                     tab.tableStyleInfo = style
                     worksheet.add_table(tab)
                     
-                    # تنسيق الخلايا وتطبيق ألوان الإجمالي والكثافة
                     for r_idx in range(6, last_row + 1):
                         worksheet.row_dimensions[r_idx].height = 26.25 
                         
@@ -588,7 +598,6 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                                 else:
                                     cell.alignment = center_align
                                     
-                                # أولوية الألوان: صف الإجمالي الأول، ثم اللجان الفاضية، ثم الكثافة الزائدة
                                 if is_total_row:
                                     cell.fill = total_row_fill
                                     cell.font = Font(bold=True, size=13, color="000000")
@@ -612,7 +621,7 @@ if st.session_state.rooms_df is not None and st.session_state.students_df is not
                         worksheet.column_dimensions['E'].width = 50 
                     else:
                         worksheet.column_dimensions['A'].width = 15 
-                        worksheet.column_dimensions['B'].width = 40 # تكبير طفيف لاحتواء كلمة "إجمالي عدد الطلبة لكل مادة"
+                        worksheet.column_dimensions['B'].width = 40 
                         worksheet.column_dimensions['C'].width = 12 
                         worksheet.column_dimensions['D'].width = 15 
                         worksheet.column_dimensions['E'].width = 15 
